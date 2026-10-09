@@ -87,3 +87,12 @@
 - 이 PC에서 최종 서버 경로로 실제 1920×1080 RFB 접속 및 화면 데이터 수신 재검증 성공. 실행 중인 서비스의 핵심 Python 파일을 최종 로컬 소스와 일치하게 반영.
 - 호환성 시험에만 사용했던 임시 TLS key/certificate를 제거. 최종 구성은 기존 native VNC 설정을 유지하고, private Unix socket 및 인증된 내부 adapter를 사용.
 - Github main 배포 및 CI 결과는 후속 기록에 추가.
+
+## 2026-10-10 00:12 KST — CodexCode — VNC GitHub 배포 완료
+
+- 구현 커밋 `02ee178573ee0a017651773b04afb8c3038bf3cd`을 origin/main에 push 성공.
+- GitHub Actions 실행 `37949775940` completed/success 확인. Python 3.10/3.11/3.13 테스트 및 빌드 수행.
+- CI 결과: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/37949775940
+- 설치된 v0.2.0 wheel import/버전/Pi 원격 페이지 포함 검사 통과.
+- 최종 Pi 원격 접속 경로는 `/pi`. 기존 콘솔 토큰으로 로그인 후 ‘Pi 화면 연결’ 사용. 이 PC의 로컬 바로가기와 PowerShell 실행 스크립트 준비.
+- 구현과 설치, 자동 검증 및 실제 화면 데이터 전송 검증 완료. 연결 가능한 UI 브라우저가 없어 실제 브라우저 화면을 열어 키/마우스로 조작하는 검증은 미수행이라고 보고.
