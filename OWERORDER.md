@@ -43,3 +43,9 @@
 - 사용자 연결 정보는 Pi HDMI ↔ 컴퓨터 HDMI입니다. USB 입력 전송에는 컴퓨터 USB ↔ Pi USB 데이터 케이블 연결이 별도로 필요함을 설명했습니다.
 - Pi 패치 적용 및 Python 39개/Node 7개 검사 통과. KVM/VNC 서비스 실행 상태를 복구했습니다.
 - 실제 USB 입력 검증은 UDC가 configured로 바뀐 뒤 수행해야 합니다. 현재는 not attached입니다.
+
+## 2026-10-10 00:37 KST — 최종 보고
+
+- v0.2.1 Pi 설치 및 GitHub main 배포 완료(`73e42c6`). Python 39개 + Node 7개, 빌드 및 GitHub CI `37952987927` 성공.
+- 실기 API의 USB 미연결 안내 및 불필요한 release 처리, VNC 화면 전송을 검증했습니다. 접속 토큰은 배포에서 제외했습니다.
+- 남은 사항: 대상 컴퓨터 USB 포트와 Pi USB 포트를 데이터 케이블로 연결하십시오. 연결 상태가 configured가 된 뒤 USB 입력을 검증할 수 있습니다. HDMI는 이 USB 연결을 대신하지 않습니다.

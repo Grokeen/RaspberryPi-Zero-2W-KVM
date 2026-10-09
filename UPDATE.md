@@ -114,3 +114,11 @@
 - 사용자가 Pi HDMI와 컴퓨터 HDMI가 연결되어 있다고 알림. HDMI 연결이 USB HID 키보드/마우스 전송을 대신하지 않는 점과 별도 USB 데이터 연결 필요를 안내. UI에도 HDMI 안내 추가.
 - Pi에 패치 소스 반영 후 Python 39개/Node 7개 테스트 통과. KVM, desktop 및 adapter 서비스 active 확인.
 - 새 오류 응답과 부팅 의존성 수정 적용. 실제 UDC 상태는 여전히 not attached로 대상 USB 인식/입력 검증은 데이터 케이블 연결 후 가능.
+
+## 2026-10-10 00:37 KST — CodexCode — v0.2.1 배포 및 최종 결과
+
+- 토큰 없는 별도 소스로 v0.2.1 wheel/source archive 빌드 성공. 배포 패키지 및 staged Git 파일에서 실제 접속 토큰 제외 검사 통과. 사용자의 로컬 README 내용 유지.
+- 커밋 `73e42c6`을 GitHub main에 push 성공. CI `37952987927` completed/success 확인: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/37952987927
+- 실제 Pi API: 미연결 heartbeat → 읽기 쉬운 usb_disconnected 503, 빈 release → 200, 제어권 미획득 검증 통과.
+- Pi VNC 복구 후 1920×1080 RFB 연결 및 57,600픽셀 수신 재검증 통과. KVM/desktop/adapter 모두 active.
+- 최종 USB 상태는 not attached. HDMI 연결 정보는 확인했으나 실제 대상 컴퓨터 USB 데이터 케이블 연결이 인식된 상태는 아님. USB를 연결한 뒤 configured/실제 입력 확인이 남음.
