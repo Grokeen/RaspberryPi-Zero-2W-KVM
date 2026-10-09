@@ -1,0 +1,11 @@
+# 2026-10-09 22:18 KST: CodexCode - keep credentials and local tools out of Git.
+codexCode.md
+.local/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.env
+*.token

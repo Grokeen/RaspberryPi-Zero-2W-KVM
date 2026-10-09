@@ -1,0 +1,2 @@
+# 2026-10-09 22:32 KST: CodexCode - HID access for the dedicated service account.
+SUBSYSTEM=="hidg", KERNEL=="hidg[0-9]*", GROUP="kvm", MODE="0660"

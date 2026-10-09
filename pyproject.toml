@@ -1,0 +1,20 @@
+# 2026-10-09 22:22 KST: CodexCode - dependency-free runtime and wheel packaging.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zero2w-kvm"
+version = "0.1.0"
+description = "USB HID keyboard/mouse and optional MJPEG console for Raspberry Pi Zero 2 W"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[project.scripts]
+zero2w-kvm = "zero2w_kvm.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+zero2w_kvm = ["static/*"]

@@ -1,0 +1,8 @@
+# 2026-10-09 22:39 KST: CodexCode - keep Pi deployment scripts consistent across OSes.
+* text=auto
+*.py text eol=lf
+*.sh text eol=lf
+*.js text eol=lf
+*.service text eol=lf
+*.rules text eol=lf
+*.example text eol=lf

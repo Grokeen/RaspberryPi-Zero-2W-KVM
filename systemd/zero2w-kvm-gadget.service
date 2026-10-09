@@ -1,0 +1,17 @@
+# 2026-10-09 22:32 KST: CodexCode - root-only USB gadget initialization.
+[Unit]
+Description=Zero 2 W KVM USB keyboard and mouse
+After=local-fs.target systemd-udevd.service
+Before=zero2w-kvm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/zero2w-kvm
+ExecStart=/usr/bin/python3 -m zero2w_kvm.gadget start
+ExecStartPost=/usr/bin/udevadm settle
+ExecStop=/usr/bin/python3 -m zero2w_kvm.gadget stop
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

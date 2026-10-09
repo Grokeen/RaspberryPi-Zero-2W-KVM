@@ -1,0 +1,31 @@
+# 2026-10-09 22:32 KST: CodexCode - unprivileged authenticated web console.
+[Unit]
+Description=Zero 2 W KVM web console
+Requires=zero2w-kvm-gadget.service
+After=zero2w-kvm-gadget.service network.target
+
+[Service]
+Type=simple
+User=zero2w-kvm
+Group=kvm
+SupplementaryGroups=video
+WorkingDirectory=/opt/zero2w-kvm
+EnvironmentFile=/etc/zero2w-kvm/config
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m zero2w_kvm
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
