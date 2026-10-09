@@ -42,3 +42,13 @@
 - `python -m build` 성공: `dist/zero2w_kvm-0.1.0-py3-none-any.whl`, `dist/zero2w_kvm-0.1.0.tar.gz` 생성.
 - source archive에 Pi 설치 스크립트/systemd 설정, wheel에 정적 웹 파일이 포함된 것을 검사. 접속 정보 파일과 로컬 도구가 패키지에 없는 것을 확인.
 - GitHub 배포 대상: `Grokeen/RaspberryPi-Zero-2W-KVM`의 main 브랜치. 성공한 push/CI 결과는 후속 기록에 추가.
+
+## 2026-10-09 22:43 KST — CodexCode — GitHub 배포 완료
+
+- 구현 커밋 `9ae5a9b926ddd72f569c3591413ee8a02c24fde1`을 origin/main에 push 성공.
+- GitHub Actions 실행 `37938669473`에서 Python 3.10, 3.11, 3.13 작업 모두 success. 각 작업에서 Python/Node 테스트, 컴파일/쉘 검사, 배포 패키지 빌드 완료.
+- CI 결과: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/37938669473
+- 설치 wheel의 런타임 import, 버전, 정적 웹 파일 포함 확인 성공.
+- 로컬과 Pi 런타임 Python 파일 SHA256 일치, gadget/web 서비스 enabled/active 확인.
+- 이용 주소: Pi LAN 주소의 8080 포트. 접속 토큰은 Pi의 `/etc/zero2w-kvm/access.token`에서 관리자 권한으로 확인.
+- 남은 하드웨어 검증: 대상 컴퓨터를 Pi USB 데이터 포트에 연결한 뒤 USB enumeration과 실제 키보드/마우스 입력 확인. 영상 기능은 실제 호환 캡처 하드웨어 연결 후 검증 필요. 현재 이 두 하드웨어 검증을 완료했다고 주장하지 않음.
