@@ -1,5 +1,6 @@
 """2026-10-09 22:25 KST: CodexCode - authenticated LAN console and USB input API."""
 import argparse
+import errno
 from collections import defaultdict
 import hmac
 from http.cookies import CookieError, SimpleCookie
@@ -15,7 +16,7 @@ import threading
 import time
 from urllib.parse import unquote, urlsplit
 from . import __version__
-from .hid import Controller, ControlBusyError
+from .hid import Controller, ControlBusyError, USBDisconnectedError
 from .video import Video
 from .desktop import PiDesktop, websocket_key
 
@@ -145,6 +146,14 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(data).encode()
         self._headers(status, length=len(body), cookie=cookie)
         self.wfile.write(body)
+
+    def _input_failure(self, error):
+        # 2026-10-10 00:24 KST: explain a missing USB host instead of leaking kernel wording.
+        if isinstance(error, USBDisconnectedError) or error.errno in (getattr(errno, "ESHUTDOWN", 108), 108, errno.ENOTCONN, errno.EPIPE):
+            self._json(503, {"code": "usb_disconnected", "error":
+                "USB 대상 컴퓨터의 연결이 인식되지 않았습니다. Pi의 USB 포트를 데이터 케이블로 연결하고 대상 컴퓨터를 켜세요."})
+        else:
+            self._json(503, {"code": "usb_unavailable", "error": f"USB input unavailable: {error}"})
 
     def _origin_ok(self):
         origin = self.headers.get("Origin")
@@ -278,7 +287,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.server.app.controller.update(body, identity)
                 except OSError as error:
                     # A HID EPIPE is a device failure, not a broken HTTP client socket.
-                    self._json(503, {"error": f"USB input unavailable: {error}"})
+                    self._input_failure(error)
                     return
                 self._json(200, {"ok": True})
             elif path == "/api/logout":

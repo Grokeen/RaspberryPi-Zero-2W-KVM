@@ -46,3 +46,7 @@ footer { padding-top: 0; color: #7d90aa; font-size: 12px; }
 #pi-screen:fullscreen { width: 100vw; height: 100vh; border-radius: 0; }
 .pi-shortcuts { margin-top: 14px; }
 #pi-notice { min-height: 28px; color: #ffc88c; font-size: 14px; }
+/* 2026-10-10 00:24 KST: visible connection guidance for unavailable USB input. */
+#usb-guide { margin-bottom: 18px; border-color: #785f33; }
+#usb-guide a { color: #75dfbb; }
+#screen[aria-disabled="true"] { cursor: default; }

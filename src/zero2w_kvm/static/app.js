@@ -5,6 +5,9 @@ let authenticated = false, capturing = false, keyboardOnly = false;
 let chain = Promise.resolve(), pending = 0, keys = new Set();
 let dx = 0, dy = 0, wheel = 0, buttons = 0, mouseDirty = false;
 let videoStarted = false;
+// 2026-10-10 00:24 KST: USB target control becomes available after host enumeration.
+let usbConnected = false;
+const usbHint = "USB 대상 컴퓨터의 연결이 인식되지 않았습니다. Pi의 USB 포트를 데이터 케이블로 연결하고 대상 컴퓨터를 켜세요.";
 const known = new Set([
   ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(v => `Key${v}`),
   ...Array.from({length: 10}, (_, i) => `Digit${i}`),
@@ -18,6 +21,12 @@ const known = new Set([
 ]);
 
 function notice(message) { $("notice").textContent = message; }
+function usbControls() {
+  $("capture").disabled = !usbConnected;
+  $("release").disabled = !usbConnected;
+  document.querySelectorAll("[data-keys]").forEach(button => { button.disabled = !usbConnected; });
+  $("screen").setAttribute("aria-disabled", String(!usbConnected));
+}
 function showLogin() {
   authenticated = false;
   stopCapture();
@@ -38,12 +47,14 @@ async function api(path, data) {
   const result = await response.json();
   if (!response.ok) {
     if (response.status === 401 && path !== "/api/login") showLogin();
+    if (result.code === "usb_disconnected") { usbConnected = false; usbControls(); }
     throw new Error(result.error || `HTTP ${response.status}`);
   }
   return result;
 }
 function input(data) {
   if (!authenticated) return Promise.resolve();
+  if (!usbConnected && data.type !== "release") { notice(usbHint); return Promise.resolve(); }
   pending++;
   const task = chain.then(() => api("/api/input", data));
   chain = task.catch(error => {
@@ -77,17 +88,20 @@ $("login-form").addEventListener("submit", async event => {
   finally { button.disabled = false; }
 });
 $("capture").addEventListener("click", () => {
+  if (!usbConnected) { notice(usbHint); return; }
   if (capturing) { stopCapture(); return; }
   capturing = keyboardOnly = true;
   $("screen").focus(); captureUI(); input({type: "heartbeat"});
 });
 $("screen").addEventListener("click", async () => {
   if (!authenticated || document.pointerLockElement === $("screen")) return;
+  if (!usbConnected) { notice(usbHint); return; }
   try { await $("screen").requestPointerLock(); }
   catch { notice("마우스 캡처를 사용할 수 없습니다. 키보드 제어 버튼을 사용하세요."); }
 });
 document.addEventListener("pointerlockchange", () => {
   if (document.pointerLockElement === $("screen")) {
+    if (!usbConnected) { document.exitPointerLock(); return; }
     capturing = true; keyboardOnly = false; $("screen").focus();
     captureUI(); input({type: "heartbeat"});
   } else if (!keyboardOnly) stopCapture();
@@ -158,9 +172,13 @@ async function status() {
     $("login-panel").hidden = true; $("console-panel").hidden = false;
     const ready = result.hid.keyboard && result.hid.mouse;
     const connected = result.hid.usb_state === "configured";
+    usbConnected = ready && connected;
+    usbControls();
+    if (!usbConnected && capturing) stopCapture();
     $("connection").textContent = connected ? "USB 연결됨" : "콘솔 연결됨";
     $("connection").classList.add("ok");
     $("usb-status").textContent = !ready ? "USB gadget 설정 필요" : connected ? "키보드 · 마우스 연결됨" : `장치 준비됨 · 대상 USB 연결 대기 (${result.hid.usb_state || "unknown"})`;
+    $("usb-guide").hidden = usbConnected;
     $("video-status").textContent = result.video.error || (result.video.ready ? `${result.video.size} · ${result.video.fps} fps` : result.video.enabled ? "영상 신호 대기" : "캡처 장치 미설정");
     $("video-message").textContent = result.video.error || "화면 영상은 HDMI 캡처 장치를 설정한 뒤 표시됩니다.";
     if (result.video.ready && !videoStarted) {

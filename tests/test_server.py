@@ -12,7 +12,8 @@ TOKEN = "test-only-access-token-32-characters"
 class ServerTests(unittest.TestCase):
     def setUp(self):
         self.reports = []
-        self.app = Application(TOKEN, Controller(writer=lambda p, r: self.reports.append((p, r))))
+        self.app = Application(TOKEN, Controller(writer=lambda p, r: self.reports.append((p, r)),
+                                                 state_reader=lambda: "configured"))
         self.server = Server(("127.0.0.1", 0), self.app)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -91,7 +92,25 @@ class ServerTests(unittest.TestCase):
         self.app.controller.writer = unplugged
         code, headers, body = self.request("/api/input", {"type": "release"}, self.auth())
         self.assertEqual(code, 503)
-        self.assertIn("USB input unavailable", json.loads(body)["error"])
+        self.assertEqual(json.loads(body)["code"], "usb_disconnected")
+
+    def test_errno_108_is_a_readable_disconnection_response(self):
+        def unavailable(path, report):
+            raise OSError(108, "Cannot send after transport endpoint shutdown")
+        self.app.controller.writer = unavailable
+        code, _, body = self.request("/api/input", {"type": "keyboard", "codes": ["KeyA"]}, self.auth())
+        self.assertEqual(code, 503)
+        result = json.loads(body)
+        self.assertEqual(result["code"], "usb_disconnected")
+        self.assertIn("데이터 케이블", result["error"])
+
+    def test_disconnected_heartbeat_does_not_claim_control(self):
+        self.app.controller.state_reader = lambda: "not attached"
+        code, _, body = self.request("/api/input", {"type": "heartbeat"}, self.auth())
+        self.assertEqual(code, 503)
+        self.assertEqual(json.loads(body)["code"], "usb_disconnected")
+        self.assertIsNone(self.app.controller.owner)
+        self.assertEqual(self.reports, [])
 
     def test_logout_revokes_session_even_when_usb_disappears(self):
         _, headers, _ = self.request("/api/login", {"token": TOKEN})

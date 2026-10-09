@@ -7,13 +7,15 @@ const vm = require("node:vm");
 const path = require("node:path");
 const source = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/app.js"), "utf8");
 
-function fixture() {
+function fixture(usbState = "configured") {
   class Element {
     constructor() { this.listeners = {}; this.dataset = {}; this.classList = {add() {}, remove() {}}; }
     addEventListener(type, listener) { (this.listeners[type] ||= []).push(listener); }
     async fire(type, event = {}) { for (const listener of this.listeners[type] || []) await listener(event); }
     focus() {}
     removeAttribute() {}
+    setAttribute(name, value) { this[name] = value; }
+    async requestPointerLock() { this.pointerLockRequested = true; }
   }
   const elements = new Map();
   const document = new Element();
@@ -29,7 +31,7 @@ function fixture() {
     fetch: async (url, options) => {
       if (url === "/api/input") events.push(JSON.parse(options.body));
       return {ok: true, status: 200, json: async () => url === "/api/status" ? {
-        hid: {keyboard: true, mouse: true, usb_state: "configured"}, video: {ready: false, enabled: false}
+        hid: {keyboard: true, mouse: true, usb_state: usbState}, video: {ready: false, enabled: false}
       } : {ok: true}};
     }
   });
@@ -76,6 +78,21 @@ test("Escape stops capture without sending a host Escape key", async () => {
   await f.run("chain");
   assert.deepEqual(f.events.at(-1), {type: "release"});
   assert.equal(f.events.some(e => e.codes?.includes("Escape")), false);
+});
+
+// 2026-10-10 00:26 KST: no keyboard or pointer capture before USB host enumeration.
+test("detached USB disables capture and clicking the screen only shows wiring guidance", async () => {
+  const f = fixture("not attached");
+  await f.run("status()");
+  assert.equal(f.elements.get("capture").disabled, true);
+  assert.equal(f.elements.get("usb-guide").hidden, false);
+  await f.elements.get("capture").fire("click");
+  await f.elements.get("screen").fire("click");
+  await f.run("chain");
+  assert.equal(f.run("capturing"), false);
+  assert.equal(f.elements.get("screen").pointerLockRequested, undefined);
+  assert.deepEqual(f.events, []);
+  assert.match(f.elements.get("notice").textContent, /데이터 케이블/);
 });
 
 // 2026-10-09 23:42 KST: CodexCode - isolate Pi desktop controls and cancel stale connections.

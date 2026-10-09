@@ -1,5 +1,6 @@
 """2026-10-09 22:22 KST: CodexCode - HID reports, bounded I/O and stuck-key recovery."""
 import os
+import errno
 import select
 import struct
 import threading
@@ -103,11 +104,28 @@ class ControlBusyError(Exception):
     """An authenticated session already owns the input lease."""
 
 
+class USBDisconnectedError(OSError):
+    """2026-10-10 00:24 KST: reject input until the target USB host configures HID."""
+    def __init__(self):
+        super().__init__(errno.ENOTCONN, "USB target is not configured")
+
+
+def read_usb_state():
+    for state in Path("/sys/class/udc").glob("*/state"):
+        try:
+            return state.read_text().strip()
+        except OSError:
+            continue
+    return None
+
+
 class Controller:
-    def __init__(self, keyboard="/dev/hidg0", mouse="/dev/hidg1", writer=None, clock=time.monotonic):
+    def __init__(self, keyboard="/dev/hidg0", mouse="/dev/hidg1", writer=None, clock=time.monotonic,
+                 state_reader=read_usb_state):
         self.keyboard, self.mouse = keyboard, mouse
         self.writer = writer or DeviceWriter()
         self.clock = clock
+        self.state_reader = state_reader
         self.lock = threading.RLock()
         self.last_input = clock()
         self.keyboard_state = bytes(8)
@@ -141,6 +159,9 @@ class Controller:
         elif kind not in ("release", "heartbeat"):
             raise ValueError("Unknown input event type")
         with self.lock:
+            # 2026-10-10 00:24 KST: heartbeat must not acquire disconnected hardware.
+            if kind != "release" and self.state_reader() != "configured":
+                raise USBDisconnectedError()
             self._claim(owner)
             self.last_input = self.clock()
             if kind == "keyboard":
@@ -164,6 +185,9 @@ class Controller:
 
     def release(self):
         with self.lock:
+            if self.state_reader() != "configured" and not any(self.keyboard_state) and not self.buttons:
+                self.owner = None
+                return
             first_error = None
             for path, report in [(self.keyboard, bytes(8)), (self.mouse, bytes(4))]:
                 try:
@@ -185,13 +209,7 @@ class Controller:
                     self.release()
 
     def status(self):
-        states = list(Path("/sys/class/udc").glob("*/state"))
-        usb_state = None
-        if states:
-            try:
-                usb_state = states[0].read_text().strip()
-            except OSError:
-                pass
+        usb_state = self.state_reader()
         with self.lock:
             return {"keyboard": Path(self.keyboard).exists(), "mouse": Path(self.mouse).exists(),
                     "usb_state": usb_state, "controlling": self.owner is not None,

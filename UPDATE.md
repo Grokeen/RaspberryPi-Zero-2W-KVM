@@ -96,3 +96,21 @@
 - 설치된 v0.2.0 wheel import/버전/Pi 원격 페이지 포함 검사 통과.
 - 최종 Pi 원격 접속 경로는 `/pi`. 기존 콘솔 토큰으로 로그인 후 ‘Pi 화면 연결’ 사용. 이 PC의 로컬 바로가기와 PowerShell 실행 스크립트 준비.
 - 구현과 설치, 자동 검증 및 실제 화면 데이터 전송 검증 완료. 연결 가능한 UI 브라우저가 없어 실제 브라우저 화면을 열어 키/마우스로 조작하는 검증은 미수행이라고 보고.
+
+## 2026-10-10 00:29 KST — CodexCode — USB Errno 108 진단 및 안내 개선
+
+- 사용자 오류 보고: `Cannot send after transport endpoint shutdown`. 사용자 의도는 USB 대상 컴퓨터 제어로 확인.
+- Pi 실기 확인: HID nodes 및 gadget/web 서비스 정상, UDC `not attached`. 대상 호스트가 USB gadget을 구성하지 않은 상태가 원인. 데이터 케이블/USB 포트의 물리 연결 확인 요청.
+- `hid.py`: USB 연결 상태 읽기 및 미구성 상태 입력/heartbeat 차단 추가. 미연결/입력 없음의 release는 장치를 쓰지 않고 종료. 눌린 키가 남아 있는 경우 재연결 후 해제 재시도 유지.
+- `server.py`: Errno 108/EPIPE/미연결에 대해 `usb_disconnected` 코드와 읽기 쉬운 데이터 케이블 연결 안내 반환.
+- `static/app.js`, `index.html`, `style.css`: USB가 configured일 때만 입력/포인터 잠금/단축키 활성화, 연결 대기 안내 표시 및 연결 이탈 시 제어 종료.
+- `tests/test_hid.py`, `test_server.py`, `test_browser.js`: 미연결의 입력·lease 차단, release/noop, 재연결 해제, Errno 108 응답 및 UI 연결 대기 테스트 추가. Python 39개 + Node 7개 테스트 통과.
+- 재부팅 로그에서 desktop 초기 namespace 실패 후 adapter의 Requires 의존성 실패 확인. `zero2w-kvm-desktop-proxy.service`를 Wants로 수정하여 desktop의 초기 실패가 adapter 시작을 막지 않도록 보완. 기준: https://manpages.debian.org/bookworm/systemd/systemd.unit.5.en.html
+- 사용자 최신 규칙의 `OWERORDER.md` 보고 파일 사용, MANIFEST 수정. README 작업본에 접속 토큰이 있어 내용을 유지하고 빌드/배포에는 토큰이 없는 Git 문서 복사본 사용.
+- 패치 버전 0.2.1로 변경. Pi 반영 및 최종 빌드/검증 결과는 아래에 기록.
+
+## 2026-10-10 00:33 KST — CodexCode — HDMI 연결 확인 및 Pi 패치 반영
+
+- 사용자가 Pi HDMI와 컴퓨터 HDMI가 연결되어 있다고 알림. HDMI 연결이 USB HID 키보드/마우스 전송을 대신하지 않는 점과 별도 USB 데이터 연결 필요를 안내. UI에도 HDMI 안내 추가.
+- Pi에 패치 소스 반영 후 Python 39개/Node 7개 테스트 통과. KVM, desktop 및 adapter 서비스 active 확인.
+- 새 오류 응답과 부팅 의존성 수정 적용. 실제 UDC 상태는 여전히 not attached로 대상 USB 인식/입력 검증은 데이터 케이블 연결 후 가능.

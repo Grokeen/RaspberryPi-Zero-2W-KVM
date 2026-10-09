@@ -1,6 +1,6 @@
 # RaspberryPi-Zero-2W-KVM
 
-Raspberry Pi Zero 2 W를 USB 키보드와 마우스로 연결하고, 같은 네트워크의 웹 브라우저에서 대상 컴퓨터를 제어합니다. CodexCode v0.2.0은 USB 입력 제어, 선택적 V4L2 영상, Pi 자체의 VNC 원격 데스크톱을 제공합니다.
+Raspberry Pi Zero 2 W를 USB 키보드와 마우스로 연결하고, 같은 네트워크의 웹 브라우저에서 대상 컴퓨터를 제어합니다. CodexCode v0.2.1은 USB 입력 제어, 선택적 V4L2 영상, Pi 자체의 VNC 원격 데스크톱을 제공합니다.
 
 ## 연결 구조
 
@@ -177,4 +177,9 @@ Windows PowerShell에서는 `$env:PYTHONPATH='src'`를 설정한 뒤 `python -m 
 
 구현 기준: [Linux HID gadget](https://docs.kernel.org/usb/gadget_hid.html), [Linux USB configfs](https://docs.kernel.org/usb/gadget_configfs.html). USB VID/PID `1d6b:0104`는 Linux 예제 값을 쓰는 프로토타입 설정이며, 상용 제품용 할당 ID가 아닙니다.
 
-작업 기록은 [UPDATE.md](UPDATE.md), 간단한 작업/테스트 보고는 [OWERORDER.mc](OWERORDER.mc)에 누적합니다. 접속 정보가 있는 로컬 `codexCode.md`, 토큰, 개발 도구, PC 전용 `.url`은 Git에서 제외합니다.
+작업 기록은 [UPDATE.md](UPDATE.md), 간단한 작업/테스트 보고는 [OWERORDER.md](OWERORDER.md)에 누적합니다. 접속 정보가 있는 로컬 `codexCode.md`, 토큰, 개발 도구, PC 전용 `.url`은 Git에서 제외합니다.
+
+
+## USB 입력 연결 대기
+
+Errno 108은 USB 호스트가 연결/구성되지 않았을 때 발생합니다. Pi의 USB 포트(HDMI 가까운 쪽)를 켜진 대상 컴퓨터에 데이터 케이블로 연결하세요. PWR IN은 전원용입니다. UDC가 configured이면 제어 버튼이 활성화됩니다.

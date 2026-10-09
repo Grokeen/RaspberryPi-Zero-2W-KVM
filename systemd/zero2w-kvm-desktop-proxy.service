@@ -1,7 +1,8 @@
 # 2026-10-09 23:50 KST: CodexCode - loopback WebSocket-to-VNC adapter.
 [Unit]
 Description=Zero 2 W KVM Pi desktop WebSocket adapter
-Requires=zero2w-kvm-desktop.service
+# 2026-10-10 00:24 KST: start the adapter even if the desktop's first boot attempt fails.
+Wants=zero2w-kvm-desktop.service
 After=zero2w-kvm-desktop.service
 
 [Service]
