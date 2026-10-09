@@ -133,3 +133,12 @@
 - 로컬 Python 40개 및 Node 10개 테스트 통과. 버전 0.2.2로 변경. Pi 반영, 빌드 및 GitHub 결과는 아래에 기록.
 - 실제 대상 컴퓨터의 입력기에서 글자가 표시되는 수동 검증은 아직 수행하지 않음. 현재 검증은 브라우저 이벤트와 HID 보고서의 회귀 테스트.
 - 기준: https://www.w3.org/TR/uievents/ (KeyboardEvent modifier state와 물리 key code).
+
+## 2026-10-10 01:11 KST — CodexCode — v0.2.2 설치/빌드/배포 결과
+
+- Pi에서도 Python 40개/Node 10개 테스트 통과, 설치 후 UDC configured 및 KVM 서비스 active 확인.
+- HTTP로 받은 app.js와 로컬 수정본 SHA256 일치: `d1b6410d6c55f0d6af182476e3799f6f986cc5e473d85f08e9e64b2713a7ce95`.
+- v0.2.2 wheel/source archive 빌드 및 실제 접속 토큰 제외 검사 통과. 로컬 README의 사용자 내용 유지.
+- 구현 커밋 `e7ca200`을 origin/main에 push. GitHub Actions `37957044211` completed/success: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/37957044211
+- 사용자 확인 절차를 Esc로 제어 종료 후 Ctrl+F5 새로고침으로 보완. USB 제어 중에는 Ctrl+F5도 대상 컴퓨터에 전달되므로 브라우저 새로고침 전에 제어 종료 필요.
+- 자동 검증 범위는 IME/수정키 이벤트 상태와 HID 보고서. 실제 대상 앱의 한글 표시 검증은 사용자 재시험으로 확인 필요.
