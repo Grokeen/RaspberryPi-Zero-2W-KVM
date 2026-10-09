@@ -1,6 +1,6 @@
 # RaspberryPi-Zero-2W-KVM
 
-Raspberry Pi Zero 2 W를 USB 키보드와 마우스로 연결하고, 같은 네트워크의 웹 브라우저에서 대상 컴퓨터를 제어합니다. CodexCode가 구현한 첫 버전은 USB 입력 제어와 선택적 V4L2 MJPEG 영상 스트리밍을 제공합니다.
+Raspberry Pi Zero 2 W를 USB 키보드와 마우스로 연결하고, 같은 네트워크의 웹 브라우저에서 대상 컴퓨터를 제어합니다. CodexCode v0.2.0은 USB 입력 제어, 선택적 V4L2 영상, Pi 자체의 VNC 원격 데스크톱을 제공합니다.
 
 ## 연결 구조
 
@@ -95,6 +95,46 @@ sudo systemctl start zero2w-kvm
 
 설치 전 boot 설정은 같은 디렉터리의 `*.codexcode-날짜-시간.bak`에 저장됩니다. 기존 앱 코드가 있으면 `/opt/zero2w-kvm-backup-날짜-시간/`에 보존합니다. 토큰과 사용자 설정은 재설치 시 유지됩니다. 완전히 이전 구성으로 복구하려면 서비스를 비활성화하고 필요한 boot 백업을 복원한 뒤 재부팅하세요.
 
+## Pi VNC 원격 데스크톱
+
+Pi 자체의 화면과 마우스/키보드를 조작하려면 USB KVM 콘솔의 **Pi 원격 제어**를 누르거나 `http://<Pi-IP>:8080/pi`를 엽니다. 기존 콘솔 토큰으로 로그인하고 **Pi 화면 연결**을 선택합니다. 화면을 클릭하면 키보드와 마우스 입력을 Pi 데스크톱에 보냅니다. 보기 전용, 전체 화면, 연결 종료와 Esc/Tab 버튼을 제공합니다. 이 화면은 Pi를 조작하며 USB로 연결된 대상 컴퓨터 제어는 기존 USB KVM 화면에서 수행합니다.
+
+Pi 설치 순서:
+
+```bash
+sudo bash scripts/install.sh
+sudo bash scripts/setup_vnc.sh <desktop-user>
+```
+
+Raspberry Pi OS Bookworm의 labwc/Wayland 데스크톱과 WayVNC가 필요합니다. 이미 로그인된 데스크톱을 공유하며 데스크톱 로그인이나 사용자 계정을 새로 만들지 않습니다. 원격 전용 Pi에서는 기존 데스크톱 자동 로그인 설정이 있어야 부팅 후 바로 공유할 수 있습니다. [Raspberry Pi VNC 안내](https://www.raspberrypi.com/documentation/computers/remote-access.html#screen-share-with-vnc), [WayVNC 설명](https://github.com/any1/wayvnc)
+
+- 기존 native WayVNC `5900`과 해당 인증/암호화 설정을 유지합니다. 일반 VNC Viewer로는 `<Pi-IP>:5900`에 접속하고 기존 Pi 계정 인증을 사용합니다.
+- 웹 전용 `zero2w-kvm-desktop.service`는 데스크톱 계정으로 실행하며, 권한 0660의 `/run/zero2w-kvm-desktop/vnc.sock`에서 VNC를 받습니다. 서비스 디렉터리는 0750이며 KVM 그룹만 내부 소켓에 접근합니다. 이 전용 VNC는 TCP 포트를 열지 않습니다.
+- `zero2w-kvm-desktop-proxy.service`가 `127.0.0.1:6081`에서 WebSocket으로 변환합니다. 이 내부 어댑터에도 임의 비밀번호 인증을 적용합니다. KVM 웹 서버가 로그인 세션과 Origin을 확인한 후 내부 인증 정보를 사용해 중계합니다. [Websockify 설명](https://github.com/novnc/websockify)
+- 내부 인증 정보는 `/etc/zero2w-kvm/pi-vnc.json`에 권한 0640으로 저장되며 재설치 시 유지됩니다. 브라우저에 전달하거나 URL/프로세스 인자/로그/Git에 넣지 않습니다. 사용자는 기존 KVM 토큰으로 한 번 로그인하면 됩니다.
+- 전용 Unix 소켓의 RFB 구간은 파일 권한과 내부 어댑터 인증으로 보호합니다. 기존 native VNC의 인증/암호화 정책을 유지합니다. LAN의 웹 구간은 기존 콘솔과 같은 HTTP이므로 신뢰하는 LAN에서 사용하거나 HTTPS/SSH 터널로 보호하세요.
+- 브라우저는 noVNC로 화면과 입력을 처리합니다. 서버에서 JavaScript 라이브러리를 받아 실행하므로 별도 Windows VNC Viewer 설치는 필요하지 않습니다. [noVNC API](https://github.com/novnc/noVNC/blob/master/docs/API.md)
+
+이 Windows PC에서는 로컬 `라즈베리파이-원격제어.url`을 더블 클릭하거나 다음 명령으로 브라우저를 엽니다. 명령은 비밀번호나 토큰을 자동 저장하지 않습니다.
+
+```powershell
+.\scripts\Open-PiDesktop.ps1 -PiHost <Pi-IP>
+```
+
+Pi에서 문제를 확인할 때:
+
+```bash
+systemctl status wayvnc zero2w-kvm-desktop zero2w-kvm-desktop-proxy zero2w-kvm
+journalctl -u zero2w-kvm-desktop -n 60 --no-pager
+ss -ltn | grep -E '5900|6081|8080'
+ls -l /run/zero2w-kvm-desktop/vnc.sock
+sudo systemctl restart zero2w-kvm-desktop
+sudo systemctl start zero2w-kvm-desktop-proxy
+sudo systemctl restart zero2w-kvm
+```
+
+Wayland 세션이 없으면 전용 서비스는 소켓 생성까지 대기하고 재시도합니다. 웹 서비스가 정상인데 연결되지 않으면 Pi 데스크톱 계정과 `/run/user/<uid>/wayland-0`, 서비스 로그를 확인하세요.
+
 ## API
 
 쿠키 세션 또는 `Authorization: Bearer <token>` 인증이 필요합니다. 토큰을 URL에 넣지 마세요.
@@ -106,6 +146,8 @@ sudo systemctl start zero2w-kvm
 | `/api/input` | POST | 아래 입력 이벤트 |
 | `/api/video` | GET | 인증된 MJPEG 스트림, 영상 미설정 시 503 |
 | `/api/logout` | POST | `{}` → 세션 해제, 본인 입력 해제 |
+| `/api/pi/status` | GET | Pi 원격 데스크톱 준비 상태 |
+| `/api/pi/vnc` | WebSocket GET | 인증 및 같은 Origin 검사 후 Pi 화면/입력 중계 |
 
 ```json
 {"type":"keyboard","codes":["ControlLeft","KeyC"]}
@@ -124,6 +166,8 @@ sudo systemctl start zero2w-kvm
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 -m compileall -q src scripts tests
 bash -n scripts/install.sh
+bash -n scripts/setup_vnc.sh
+node --check src/zero2w_kvm/static/pi.js
 node --test tests/test_browser.js
 python3 -m pip install build
 python3 -m build
@@ -133,4 +177,4 @@ Windows PowerShell에서는 `$env:PYTHONPATH='src'`를 설정한 뒤 `python -m 
 
 구현 기준: [Linux HID gadget](https://docs.kernel.org/usb/gadget_hid.html), [Linux USB configfs](https://docs.kernel.org/usb/gadget_configfs.html). USB VID/PID `1d6b:0104`는 Linux 예제 값을 쓰는 프로토타입 설정이며, 상용 제품용 할당 ID가 아닙니다.
 
-작업 기록은 [UPDATE.md](UPDATE.md)에 누적합니다. 접속 정보가 있는 로컬 `codexCode.md`, 토큰, 개발 도구는 Git에서 제외합니다.
+작업 기록은 [UPDATE.md](UPDATE.md), 간단한 작업/테스트 보고는 [OWERORDER.mc](OWERORDER.mc)에 누적합니다. 접속 정보가 있는 로컬 `codexCode.md`, 토큰, 개발 도구, PC 전용 `.url`은 Git에서 제외합니다.

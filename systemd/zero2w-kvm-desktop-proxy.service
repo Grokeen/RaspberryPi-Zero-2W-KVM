@@ -1,0 +1,24 @@
+# 2026-10-09 23:50 KST: CodexCode - loopback WebSocket-to-VNC adapter.
+[Unit]
+Description=Zero 2 W KVM Pi desktop WebSocket adapter
+Requires=zero2w-kvm-desktop.service
+After=zero2w-kvm-desktop.service
+
+[Service]
+Type=simple
+User=zero2w-kvm
+Group=kvm
+WorkingDirectory=/opt/zero2w-kvm
+Environment=PYTHONPATH=/opt/zero2w-kvm
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/websockify --unix-target=/run/zero2w-kvm-desktop/vnc.sock --auth-plugin=zero2w_kvm.desktop_auth.FileBasicAuth --auth-source=/etc/zero2w-kvm/pi-vnc.json 127.0.0.1:6081
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+UMask=0077
+
+[Install]
+WantedBy=graphical.target

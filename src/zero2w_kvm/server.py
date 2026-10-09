@@ -13,22 +13,24 @@ import secrets
 import signal
 import threading
 import time
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from . import __version__
 from .hid import Controller, ControlBusyError
 from .video import Video
+from .desktop import PiDesktop, websocket_key
 
 LOG = logging.getLogger("zero2w-kvm")
 STATIC = Path(__file__).with_name("static")
 
 
 class Application:
-    def __init__(self, token, controller=None, video=None):
+    def __init__(self, token, controller=None, video=None, desktop=None):
         if len(token) < 24:
             raise ValueError("Use an access token of at least 24 characters")
         self.token = token
         self.controller = controller or Controller()
         self.video = video or Video()
+        self.desktop = desktop or PiDesktop()
         self.sessions = {}
         self.attempts = defaultdict(list)
         self.lock = threading.Lock()
@@ -126,7 +128,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'")
+        # 2026-10-09 23:34 KST: noVNC sets its canvas viewport style at runtime.
+        styles = "'self' 'unsafe-inline'" if urlsplit(self.path).path == "/pi" else "'self'"
+        connections = "'self'"
+        host = self.headers.get("Host", "")
+        if urlsplit(self.path).path == "/pi" and re.fullmatch(r"[A-Za-z0-9.\-:\[\]]+", host):
+            connections += f" ws://{host} wss://{host}"
+        self.send_header("Content-Security-Policy", f"default-src 'self'; script-src 'self'; style-src {styles}; img-src 'self' data:; connect-src {connections}; frame-ancestors 'none'")
         if length is not None:
             self.send_header("Content-Length", str(length))
         if cookie:
@@ -161,7 +169,9 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         assets = {"/": ("index.html", "text/html; charset=utf-8"),
                   "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-                  "/style.css": ("style.css", "text/css; charset=utf-8")}
+                  "/style.css": ("style.css", "text/css; charset=utf-8"),
+                  "/pi": ("pi.html", "text/html; charset=utf-8"),
+                  "/pi.js": ("pi.js", "text/javascript; charset=utf-8")}
         try:
             if path in assets:
                 filename, mime = assets[path]
@@ -169,7 +179,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._headers(200, mime, len(body))
                 self.wfile.write(body)
                 return
-            if path not in ("/api/status", "/api/video"):
+            if path not in ("/api/status", "/api/video", "/api/pi/status", "/api/pi/vnc") and not path.startswith("/novnc/"):
                 self._json(404, {"error": "Not found"})
                 return
             identity = self.server.app.identity(self.headers)
@@ -179,10 +189,55 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/status":
                 self._json(200, {"version": __version__, "hid": self.server.app.controller.status(),
                                  "video": self.server.app.video.status()})
-            else:
+            elif path == "/api/video":
                 self._video(identity)
+            elif path == "/api/pi/status":
+                self._json(200, self.server.app.desktop.status())
+            elif path == "/api/pi/vnc":
+                self._desktop(identity)
+            elif path.startswith("/novnc/"):
+                try:
+                    body = self.server.app.desktop.asset(unquote(path[len("/novnc/"):]))
+                except (OSError, ValueError):
+                    self._json(404, {"error": "noVNC asset not found"})
+                    return
+                self._headers(200, "text/javascript; charset=utf-8", len(body))
+                self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             pass
+
+    def _desktop(self, identity):
+        # 2026-10-09 23:34 KST: require session authentication and an explicit same Origin.
+        if not self.headers.get("Origin") or not self._origin_ok():
+            self._json(403, {"error": "A same-origin WebSocket request is required"})
+            return
+        try:
+            key = websocket_key(self.headers)
+        except ValueError as error:
+            self._json(400, {"error": str(error)})
+            return
+        desktop = self.server.app.desktop
+        if not desktop.slots.acquire(blocking=False):
+            self._json(429, {"error": "Pi desktop viewer limit reached"})
+            return
+        backend = None
+        upgraded = False
+        try:
+            backend, response = desktop.upgrade(key)
+            self.close_connection = True
+            self.wfile.write(response)
+            self.wfile.flush()
+            upgraded = True
+            desktop.relay(self.connection, backend, lambda:
+                          not self.server.app.closed.is_set()
+                          and self.server.app.identity(self.headers) == identity)
+        except (OSError, ValueError):
+            if not upgraded:
+                self._json(503, {"error": "Pi desktop connection failed; check zero2w-kvm-desktop.service"})
+        finally:
+            if backend:
+                backend.close()
+            desktop.slots.release()
 
     def _video(self, identity):
         video = self.server.app.video
@@ -252,13 +307,17 @@ def main():
     parser.add_argument("--video-device", default=os.getenv("KVM_VIDEO_DEVICE") or None)
     parser.add_argument("--video-size", default=os.getenv("KVM_VIDEO_SIZE", "640x480"))
     parser.add_argument("--video-fps", type=int, default=int(os.getenv("KVM_VIDEO_FPS", "10")))
+    parser.add_argument("--pi-vnc-port", type=int, default=int(os.getenv("KVM_PI_VNC_PORT", "6081")))
+    parser.add_argument("--pi-vnc-credentials", default=os.getenv("KVM_PI_VNC_CREDENTIALS", "/etc/zero2w-kvm/pi-vnc.json"))
+    parser.add_argument("--novnc-root", default=os.getenv("KVM_NOVNC_ROOT", "/usr/share/novnc"))
     args = parser.parse_args()
     if not re.fullmatch(r"[1-9]\d{1,3}x[1-9]\d{1,3}", args.video_size) or not 1 <= args.video_fps <= 30:
         parser.error("Invalid video size or frame rate (1..30)")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     token = Path(args.token_file).read_text().strip()
     app = Application(token, Controller(args.keyboard, args.mouse),
-                      Video(args.video_device, args.video_size, args.video_fps))
+                      Video(args.video_device, args.video_size, args.video_fps),
+                      PiDesktop(args.pi_vnc_port, args.pi_vnc_credentials, args.novnc_root))
     server = Server((args.host, args.port), app)
     app.video.start()
     threading.Thread(target=app.watchdog, daemon=True).start()

@@ -1,0 +1,33 @@
+# 2026-10-10 00:06 KST: CodexCode - Pi VNC on a group-restricted Unix socket.
+# setup_vnc.sh replaces the desktop account placeholders before installing this unit.
+[Unit]
+Description=Zero 2 W KVM Pi browser desktop
+After=display-manager.service network.target
+Wants=display-manager.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=@DESKTOP_USER@
+Group=kvm
+SupplementaryGroups=kvm
+Environment=XDG_RUNTIME_DIR=/run/user/@DESKTOP_UID@
+Environment=WAYLAND_DISPLAY=wayland-0
+RuntimeDirectory=zero2w-kvm-desktop
+RuntimeDirectoryMode=0750
+ExecStartPre=/usr/bin/python3 /opt/zero2w-kvm/wait_for_wayland.py
+ExecStart=/usr/bin/wayvnc --unix-socket --render-cursor --max-fps=15 --config=/etc/zero2w-kvm/pi-vnc.conf --socket=/run/zero2w-kvm-desktop/wayvncctl.sock
+ExecStartPost=/usr/bin/python3 /opt/zero2w-kvm/prepare_vnc_socket.py
+Restart=always
+RestartSec=5
+TimeoutStartSec=100
+NoNewPrivileges=yes
+ProtectSystem=strict
+# 2026-10-09 23:44 KST: expose only this desktop's runtime sockets inside the sandbox.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/run/user/@DESKTOP_UID@
+PrivateTmp=yes
+UMask=0007
+
+[Install]
+WantedBy=graphical.target

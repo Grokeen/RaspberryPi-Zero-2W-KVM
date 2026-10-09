@@ -77,3 +77,77 @@ test("Escape stops capture without sending a host Escape key", async () => {
   assert.deepEqual(f.events.at(-1), {type: "release"});
   assert.equal(f.events.some(e => e.codes?.includes("Escape")), false);
 });
+
+// 2026-10-09 23:42 KST: CodexCode - isolate Pi desktop controls and cancel stale connections.
+function piFixture(loadOverride) {
+  class Element {
+    constructor() { this.listeners = {}; this.checked = false; this.classList = {toggle() {}}; }
+    addEventListener(type, callback) { this.listeners[type] = callback; }
+    async fire(type, event = {}) { await this.listeners[type]?.(event); }
+  }
+  const elements = new Map(), requests = [], instances = [];
+  const document = {getElementById: id => {
+    if (!elements.has(id)) elements.set(id, new Element());
+    return elements.get(id);
+  }};
+  class FakeRFB extends Element {
+    constructor(target, url, options) { super(); this.url = url; this.options = options; this.keys = []; instances.push(this); }
+    focus() { this.focused = true; }
+    disconnect() { this.disconnected = true; }
+    sendKey(...values) { this.keys.push(values); }
+    sendCredentials() {}
+  }
+  const script = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/pi.js"), "utf8")
+    .replace('await import("/novnc/core/rfb.js")', 'await loadRfb()');
+  const context = vm.createContext({document, window: new Element(), AbortSignal, Promise,
+    location: {protocol: "https:", host: "pi.example:8443"}, setInterval() {},
+    loadRfb: loadOverride || (async () => ({default: FakeRFB})),
+    fetch: async (url, options) => {
+      requests.push(url);
+      return {ok: true, status: 200, json: async () => url === "/api/pi/status" ? {ready: true}
+        : {username: "test", password: "test-only"}};
+    }
+  });
+  vm.runInContext(script, context);
+  return {elements, requests, instances, context, FakeRFB, run: code => vm.runInContext(code, context)};
+}
+
+test("Pi desktop uses same-origin WSS and never calls the USB input API", async () => {
+  const f = piFixture();
+  await f.run("connect()");
+  const rfb = f.instances[0];
+  assert.equal(rfb.url, "wss://pi.example:8443/api/pi/vnc");
+  assert.deepEqual(JSON.parse(JSON.stringify(rfb.options.wsProtocols)), ["binary"]);
+  await rfb.fire("connect");
+  await f.elements.get("pi-escape").fire("click");
+  await f.elements.get("pi-tab").fire("click");
+  assert.deepEqual(rfb.keys, [[0xff1b, "Escape"], [0xff09, "Tab"]]);
+  assert.equal(f.requests.includes("/api/input"), false);
+});
+
+test("Pi view-only prevents shortcut input and disconnect cleans up the client", async () => {
+  const f = piFixture();
+  await f.run("connect()");
+  const rfb = f.instances[0];
+  await rfb.fire("connect");
+  f.elements.get("pi-view-only").checked = true;
+  await f.elements.get("pi-view-only").fire("change");
+  await f.elements.get("pi-escape").fire("click");
+  assert.deepEqual(rfb.keys, []);
+  await f.elements.get("pi-disconnect").fire("click");
+  assert.equal(rfb.disconnected, true);
+  assert.equal(f.run("rfb"), null);
+});
+
+test("cancelling a pending Pi library load never creates a late connection", async () => {
+  let finish;
+  const loading = new Promise(resolve => { finish = resolve; });
+  const f = piFixture(() => loading);
+  const connecting = f.run("connect()");
+  // Let the status and credentials promises complete before cancelling the library load.
+  await new Promise(resolve => setImmediate(resolve));
+  f.run("disconnect()");
+  finish({default: f.FakeRFB});
+  await connecting;
+  assert.equal(f.instances.length, 0);
+});

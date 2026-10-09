@@ -9,3 +9,5 @@ build/
 dist/
 .env
 *.token
+# 2026-10-09 23:35 KST: CodexCode - this PC's LAN shortcut stays local.
+*.url

@@ -52,3 +52,38 @@
 - 로컬과 Pi 런타임 Python 파일 SHA256 일치, gadget/web 서비스 enabled/active 확인.
 - 이용 주소: Pi LAN 주소의 8080 포트. 접속 토큰은 Pi의 `/etc/zero2w-kvm/access.token`에서 관리자 권한으로 확인.
 - 남은 하드웨어 검증: 대상 컴퓨터를 Pi USB 데이터 포트에 연결한 뒤 USB enumeration과 실제 키보드/마우스 입력 확인. 영상 기능은 실제 호환 캡처 하드웨어 연결 후 검증 필요. 현재 이 두 하드웨어 검증을 완료했다고 주장하지 않음.
+
+## 2026-10-09 23:38 KST — CodexCode — Pi VNC 원격 제어 구현
+
+- 사용자 지시: Pi VNC 설정 및 이 Windows PC에서 라즈베리파이 데스크톱을 원격 조작하는 기능 추가.
+- 기존 labwc Wayland 데스크톱과 WayVNC 0.9-dev 서비스/5900 포트가 이미 활성 상태임을 확인. 기존 native VNC의 인증/암호화 설정을 변경하지 않는 구성 선택.
+- `desktop.py` 추가: 로컬 WayVNC WebSocket 연결, 토큰/쿠키 인증 후 중계, same-origin/Upgrade/nonce 검사, 4명 접속 제한, 세션 종료 시 연결 중단, 인증된 noVNC 모듈 제공.
+- `server.py` 수정: `/pi`, `/pi.js`, `/api/pi/status`, `/api/pi/credentials`, `/api/pi/vnc`, `/novnc/` 경로와 Pi desktop 설정 인자 추가.
+- `static/pi.html`, `pi.js` 추가 및 `index.html`, `style.css` 수정: Pi 원격 제어 링크, noVNC 연결/종료, 보기 전용, 전체 화면, 키보드 포커스, Esc/Tab 버튼, 공유 로그인. 비동기 연결 취소 보호 추가.
+- `scripts/setup_vnc.sh`, `wait_for_wayland.py`, `systemd/zero2w-kvm-desktop.service` 추가: desktop 계정의 기존 Wayland 세션 연결, 127.0.0.1:5901 전용 서비스, 별도 임의 인증 정보, 재설치 시 인증 정보 보존.
+- `scripts/Open-PiDesktop.ps1` 및 Git 제외 로컬 `.url` 바로가기 추가: 이 PC에서 브라우저 원격 제어 페이지 열기. 실제 IP/접속 정보는 Git에 복사하지 않음.
+- `tests/test_desktop.py` 추가: 인증/Origin/잘못된 nonce/경로 traversal/중계/handshake/접속 제한/인증 정보 비노출 테스트.
+- `__init__.py`, `pyproject.toml` 버전 0.2.0으로 변경. `kvm.env.example`, `.gitignore`, `MANIFEST.in`, CI 수정. 새 규칙에 맞춰 `OWERORDER.mc` 작업 보고서 작성.
+- Pi에 공식 Debian `novnc` 패키지 설치. 현재 기존 Python 25개 테스트 및 새 스크립트 문법 검사 통과. 신규 원격 제어 검증 결과는 아래에 기록.
+
+## 2026-10-10 00:06 KST — CodexCode — VNC 실기 호환성 및 연결 검증
+
+- Pi WayVNC 0.9-dev의 내장 WebSocket이 응답하지 않는 것을 확인하여 공식 Debian Websockify 어댑터로 연결 구성 변경.
+- noVNC 1.3과 서버의 암호화 인증 협상 불일치, legacy 인증 활성화 시 서버 double-free 종료 문제를 실기 검증에서 발견. 기존 native VNC 설정은 유지하고, 웹 전용 WayVNC는 그룹 권한 Unix 소켓으로 연결하도록 수정.
+- `zero2w-kvm-desktop.service`: KVM 그룹, runtime 0750, VNC socket 0660, desktop runtime만 sandbox에 노출. `prepare_vnc_socket.py` 추가. root 외의 데스크톱 계정으로 실행.
+- `zero2w-kvm-desktop-proxy.service`, `desktop_auth.py` 추가: 127.0.0.1:6081에서 내부 비밀번호 인증 후 Unix socket으로 중계. 전체 임의 비밀번호를 파일에서 읽고 비교하며 프로세스 인자나 브라우저에 노출하지 않음.
+- `desktop.py` 및 `setup_vnc.sh` 수정: 내부 HTTP 인증 추가, TCP 5901 제거, Unix socket readiness 검사, 재설치 시 내부 인증 정보 유지. Windows의 AF_UNIX 없는 환경을 처리하는 테스트 추가.
+- `server.py`, `pi.js` 수정: VNC 인증 정보 API 제거 및 클라이언트 전달 제거, Pi 페이지의 같은 호스트 WebSocket을 CSP에 명시.
+- 실제 LAN 테스트 통과: 토큰/쿠키 인증, 외부 Origin 403, noVNC import graph 41개 모듈 제공, RFB 연결/ServerInit 1920×1080, 실제 framebuffer 57,600픽셀 수신, 로그아웃. 실제 Pi 데스크톱에 키/마우스/클립보드 입력을 보내지 않고 확인.
+- Windows UI 도구에 연결된 브라우저가 없어 수동 시각 조작 검증은 미수행. 사용자용 원격 접속 링크, 로컬 바로가기, PowerShell 실행 스크립트 제공.
+- README/OWERORDER 보고서를 최종 Unix socket 및 내부 인증 구조로 갱신. 최종 테스트/빌드/배포 결과는 아래에 기록.
+
+## 2026-10-10 00:10 KST — CodexCode — 최종 VNC 설치 및 검증 완료
+
+- Windows/Pi: Python 34개, Node 브라우저 로직 6개 테스트 통과. Python compileall, bash 구문, JavaScript 구문 및 PowerShell launcher 구문 검사 통과.
+- v0.2.0 wheel/source archive 빌드 성공. Pi 원격 페이지, 내부 인증 플러그인, 설치 스크립트/서비스 및 OWERORDER 보고서 포함 확인. 로컬 접속 정보와 `.url`은 패키지/Git 제외.
+- Pi 재설치 후 native VNC, private desktop, 내부 adapter, KVM 웹 서비스 모두 active/enabled. private desktop NRestarts=0 확인.
+- 내부 adapter에 인증 없는 WebSocket 요청 시 401, KVM 그룹 밖 nobody 계정의 Unix socket 접근은 PermissionError로 차단 확인.
+- 이 PC에서 최종 서버 경로로 실제 1920×1080 RFB 접속 및 화면 데이터 수신 재검증 성공. 실행 중인 서비스의 핵심 Python 파일을 최종 로컬 소스와 일치하게 반영.
+- 호환성 시험에만 사용했던 임시 TLS key/certificate를 제거. 최종 구성은 기존 native VNC 설정을 유지하고, private Unix socket 및 인증된 내부 adapter를 사용.
+- Github main 배포 및 CI 결과는 후속 기록에 추가.

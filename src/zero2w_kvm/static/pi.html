@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- 2026-10-09 23:34 KST: CodexCode - authenticated Raspberry Pi remote desktop. -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>라즈베리파이 원격 제어 · Zero 2 W KVM</title>
+  <link rel="stylesheet" href="/style.css"><script type="module" src="/pi.js"></script>
+</head>
+<body>
+  <header><div><span class="eyebrow">CODEXCODE · PI DESKTOP</span><h1>라즈베리파이 원격 제어</h1></div><span id="pi-connection" class="badge">연결 확인 중</span></header>
+  <main>
+    <section id="pi-login" class="card login" hidden>
+      <h2>콘솔 로그인</h2><p>USB KVM 콘솔과 같은 접속 토큰을 사용합니다.</p>
+      <form id="pi-login-form"><label for="pi-token">접속 토큰</label><input id="pi-token" type="password" autocomplete="current-password" required minlength="24"><button type="submit">로그인</button></form>
+      <p class="hint">Pi에서 <code>sudo cat /etc/zero2w-kvm/access.token</code>으로 확인하세요.</p>
+    </section>
+    <section id="pi-console" hidden>
+      <div class="toolbar"><a href="/" class="button secondary">USB KVM 콘솔</a><button id="pi-connect">Pi 화면 연결</button><button id="pi-disconnect" class="secondary" disabled>연결 종료</button><button id="pi-fullscreen" class="secondary">전체 화면</button><label class="check"><input id="pi-view-only" type="checkbox">화면 보기만</label></div>
+      <div id="pi-screen" aria-label="라즈베리파이 원격 데스크톱"><p id="pi-placeholder">‘Pi 화면 연결’을 누르면 라즈베리파이 데스크톱을 열 수 있습니다.</p></div>
+      <div class="toolbar pi-shortcuts"><button id="pi-escape" class="secondary">Esc</button><button id="pi-tab" class="secondary">Tab</button><button id="pi-keyboard" class="secondary">키보드 포커스</button><button id="pi-logout" class="secondary">로그아웃</button></div>
+      <p class="hint">화면 안을 클릭한 뒤 키보드와 마우스로 Pi를 조작하세요. 이 화면의 입력은 라즈베리파이 데스크톱에 전달됩니다. USB로 연결한 대상 컴퓨터는 USB KVM 콘솔에서 제어합니다.</p>
+      <p id="pi-service" class="hint"></p>
+    </section>
+    <p id="pi-notice" role="status" aria-live="polite"></p>
+  </main>
+  <footer>Raspberry Pi Zero 2 W · v0.2.0 · VNC remote desktop</footer>
+</body>
+</html>

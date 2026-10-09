@@ -1,6 +1,7 @@
 # 2026-10-09 22:32 KST: CodexCode - include Pi deployment files in source archives.
 include UPDATE.md
-recursive-include scripts *.py *.sh
+recursive-include scripts *.py *.sh *.ps1
+include OWERORDER.mc
 recursive-include systemd *.service *.rules *.example
 recursive-include tests *.py *.js
 recursive-include src/zero2w_kvm/static *
