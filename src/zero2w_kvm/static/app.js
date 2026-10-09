@@ -107,15 +107,28 @@ document.addEventListener("pointerlockchange", () => {
   } else if (!keyboardOnly) stopCapture();
 });
 document.addEventListener("pointerlockerror", () => notice("브라우저가 마우스 캡처를 허용하지 않았습니다."));
+// 2026-10-10 01:00 KST: IME/focus changes can omit modifier key events; trust the current flags.
+function syncModifiers(event) {
+  for (const [flag, left, right] of [
+    ["shiftKey", "ShiftLeft", "ShiftRight"], ["ctrlKey", "ControlLeft", "ControlRight"],
+    ["altKey", "AltLeft", "AltRight"], ["metaKey", "MetaLeft", "MetaRight"]
+  ]) {
+    if (typeof event[flag] !== "boolean") continue;
+    if (!event[flag]) { keys.delete(left); keys.delete(right); }
+    else if (!keys.has(left) && !keys.has(right)) keys.add(left);
+  }
+}
 for (const type of ["keydown", "keyup"]) document.addEventListener(type, event => {
   if (!capturing) return;
   event.preventDefault();
   if (event.code === "Escape") { stopCapture(); return; }
   if (!known.has(event.code)) { notice(`지원하지 않는 키: ${event.code}`); return; }
+  const previous = [...keys].join("\0");
   if (type === "keydown") {
-    if (event.repeat) return;
     keys.add(event.code);
   } else keys.delete(event.code);
+  syncModifiers(event);
+  if (type === "keydown" && event.repeat && previous === [...keys].join("\0")) return;
   input({type: "keyboard", codes: [...keys]});
 }, true);
 document.addEventListener("mousemove", event => {

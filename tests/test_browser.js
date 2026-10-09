@@ -58,6 +58,53 @@ test("physical keyboard state stays ordered and blur ends with a release", async
   assert.equal(f.run("capturing"), false);
 });
 
+// 2026-10-10 01:00 KST: IME key events must preserve Shift even if its keydown was missed.
+test("Korean IME Shift combinations carry the modifier from every physical letter event", async () => {
+  const f = fixture();
+  await f.run("status()");
+  await f.elements.get("capture").fire("click");
+  for (const code of ["KeyR", "KeyW", "KeyE", "KeyT", "KeyQ", "KeyO", "KeyP"]) {
+    const event = {code, key: "Process", keyCode: 229, isComposing: true,
+      shiftKey: true, ctrlKey: false, altKey: false, metaKey: false, preventDefault() {}};
+    await f.document.fire("keydown", event);
+    await f.document.fire("keyup", event);
+    await f.run("chain");
+    const down = f.events.filter(e => e.type === "keyboard").at(-2);
+    assert.equal(down.codes.includes("ShiftLeft"), true, `${code} lost Shift`);
+    assert.equal(down.codes.includes(code), true);
+  }
+});
+
+test("modifier snapshots recover Shift release and preserve the explicit right Shift", async () => {
+  const f = fixture();
+  await f.run("status()");
+  await f.elements.get("capture").fire("click");
+  const event = (code, shiftKey) => ({code, shiftKey, ctrlKey: false, altKey: false, metaKey: false, preventDefault() {}});
+  await f.document.fire("keydown", event("ShiftRight", true));
+  await f.document.fire("keydown", event("KeyR", true));
+  await f.document.fire("keyup", event("KeyR", true));
+  // Simulate a missing Shift keyup; the next event's flags must clear it.
+  await f.document.fire("keydown", event("KeyW", false));
+  await f.run("chain");
+  const reports = f.events.filter(e => e.type === "keyboard");
+  assert.deepEqual(reports[1].codes, ["ShiftRight", "KeyR"]);
+  assert.deepEqual(reports.at(-1).codes, ["KeyW"]);
+});
+
+test("holding a letter still repairs a missed Shift event without duplicate repeat reports", async () => {
+  const f = fixture();
+  await f.run("status()");
+  await f.elements.get("capture").fire("click");
+  const event = (shiftKey, repeat) => ({code: "KeyR", shiftKey, repeat, preventDefault() {}});
+  await f.document.fire("keydown", event(false, false));
+  await f.document.fire("keydown", event(true, true));
+  await f.document.fire("keydown", event(true, true));
+  await f.run("chain");
+  const reports = f.events.filter(e => e.type === "keyboard");
+  assert.equal(reports.length, 2);
+  assert.equal(reports[1].codes.includes("ShiftLeft"), true);
+});
+
 test("pointer movement and buttons use the HID bit order", async () => {
   const f = fixture();
   await f.run("status()");

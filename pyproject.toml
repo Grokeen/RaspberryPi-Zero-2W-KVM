@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zero2w-kvm"
-version = "0.2.1"
+version = "0.2.2"
 description = "USB HID keyboard/mouse and optional MJPEG console for Raspberry Pi Zero 2 W"
 requires-python = ">=3.10"
 readme = "README.md"

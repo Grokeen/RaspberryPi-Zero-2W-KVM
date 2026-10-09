@@ -122,3 +122,14 @@
 - 실제 Pi API: 미연결 heartbeat → 읽기 쉬운 usb_disconnected 503, 빈 release → 200, 제어권 미획득 검증 통과.
 - Pi VNC 복구 후 1920×1080 RFB 연결 및 57,600픽셀 수신 재검증 통과. KVM/desktop/adapter 모두 active.
 - 최종 USB 상태는 not attached. HDMI 연결 정보는 확인했으나 실제 대상 컴퓨터 USB 데이터 케이블 연결이 인식된 상태는 아님. USB를 연결한 뒤 configured/실제 입력 확인이 남음.
+
+## 2026-10-10 01:03 KST — CodexCode — 한글 Shift 입력 상태 보완
+
+- 사용자 보고: Shift를 이용한 ㄲ/ㅉ 등의 입력 불가. 기존 USB 대상 제어 문맥과 실제 웹 요청 로그를 기준으로 USB 키 처리 확인. 현재 UDC 상태는 configured로 USB 연결 정상.
+- 기존 브라우저 처리에서 Shift의 개별 keydown이 누락되고 IME 글자 이벤트에 shiftKey=true만 남는 조건을 재현: 기존 코드에서는 Shift+R 보고서에 Shift가 빠짐. Shift keyup 누락 시 다음 이벤트에서 Shift가 남는 조건도 재현.
+- `static/app.js`: 글자 keydown/keyup의 shiftKey/ctrlKey/altKey/metaKey를 현재 눌린 키 상태와 동기화. 좌우 modifier는 알려진 쪽을 유지하며 이벤트 누락 시 상태 복구. 반복 키 이벤트에서도 modifier 변경은 반영하고 중복 보고서는 생략.
+- `tests/test_browser.js`: Korean IME Process/keyCode 229, Shift+R/W/E/T/Q/O/P, 오른쪽 Shift 유지, 누락된 Shift 해제, 반복 입력 상태 보완 회귀 테스트 추가.
+- `tests/test_hid.py`: ㄲ/ㅉ/ㄸ/ㅆ/ㅃ/ㅒ/ㅖ 조합의 Shift 비트 및 실제 HID 키 usage 바이트 검증 추가.
+- 로컬 Python 40개 및 Node 10개 테스트 통과. 버전 0.2.2로 변경. Pi 반영, 빌드 및 GitHub 결과는 아래에 기록.
+- 실제 대상 컴퓨터의 입력기에서 글자가 표시되는 수동 검증은 아직 수행하지 않음. 현재 검증은 브라우저 이벤트와 HID 보고서의 회귀 테스트.
+- 기준: https://www.w3.org/TR/uievents/ (KeyboardEvent modifier state와 물리 key code).

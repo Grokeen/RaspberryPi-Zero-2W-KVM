@@ -2,4 +2,5 @@
 
 # 2026-10-09 23:34 KST: CodexCode - Pi VNC remote desktop release.
 # 2026-10-10 00:29 KST: CodexCode - USB connection guidance and VNC boot recovery.
-__version__ = "0.2.1"
+# 2026-10-10 01:03 KST: CodexCode - preserve Shift during Korean IME input.
+__version__ = "0.2.2"

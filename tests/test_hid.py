@@ -17,6 +17,12 @@ class HIDTests(unittest.TestCase):
         self.assertEqual(keyboard_report(["KeyA", "KeyA", "ShiftRight"]),
                          bytes([32, 0, 4, 0, 0, 0, 0, 0]))
 
+    def test_korean_shift_combinations_have_correct_hid_modifier_and_usage(self):
+        # 2026-10-10 01:00 KST: ㄲ/ㅉ/ㄸ/ㅆ/ㅃ/ㅒ/ㅖ use Shift+R/W/E/T/Q/O/P.
+        for code, usage in [("KeyR", 21), ("KeyW", 26), ("KeyE", 8), ("KeyT", 23),
+                            ("KeyQ", 20), ("KeyO", 18), ("KeyP", 19)]:
+            self.assertEqual(keyboard_report(["ShiftLeft", code]), bytes([2, 0, usage, 0, 0, 0, 0, 0]))
+
     def test_invalid_keys_and_rollover_are_rejected(self):
         for codes in [["KeyZ", "Unidentified"], [False], None, list("ABCDEFG")]:
             with self.assertRaises(ValueError):
