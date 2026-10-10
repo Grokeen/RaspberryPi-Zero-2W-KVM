@@ -160,3 +160,12 @@
 - v0.3.0 wheel/source archive 빌드 성공. 실제 캡처 장치 없이도 영상 표시 상태와 Fullscreen API 이벤트 흐름, 실패/종료/해제 동작 검증.
 - Pi에 웹 파일/버전을 반영하고 KVM 웹 서비스를 재시작. USB gadget 재등록 없이 USB configured 및 KVM 서비스 active 확인.
 - 현재 실제 캡처 영상은 미설정 상태로, 실제 브라우저/영상의 시각 검증은 하지 않았음. GitHub 배포 및 최종 HTTP 검증 결과는 아래에 기록.
+
+## 2026-10-10 20:36 KST — CodexCode — 전체 화면 GitHub 배포 완료
+
+- 버전 반영 파일: `pyproject.toml`, `src/zero2w_kvm/__init__.py`, `static/index.html`, `static/pi.html`. 공개 README에 전체 화면 사용법 추가, 사용자 로컬 README 내용 보존.
+- 실제 HTTP의 HTML/app.js/style.css를 로컬 파일과 비교하여 일치 확인. 인증 상태 API의 버전 0.3.0 확인. 현재 capture enabled/ready는 false.
+- 구현 커밋 `acc99a6`을 origin/main에 push 성공. GitHub CI `38048893833` completed/success: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38048893833
+- Python 3.10/3.11/3.13 CI와 빌드 통과. 로컬/Pi 고유 테스트 57개(Python 40 + Node 17) 통과.
+- 배포 wheel 설치 후 버전/전체 화면 웹 파일 import 검사 통과. 소스/배포 패키지 및 Git에 실제 접속 토큰이 없는 것을 검사.
+- 사용: USB 제어 중이면 Esc로 종료 → 브라우저 Ctrl+F5 → 영상이 표시되면 전체 화면 → 종료 버튼 또는 Esc. 실제 캡처 신호/브라우저 시각 검증은 캡처 입력 장치가 준비된 뒤 확인해야 함.
