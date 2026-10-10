@@ -142,3 +142,21 @@
 - 구현 커밋 `e7ca200`을 origin/main에 push. GitHub Actions `37957044211` completed/success: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/37957044211
 - 사용자 확인 절차를 Esc로 제어 종료 후 Ctrl+F5 새로고침으로 보완. USB 제어 중에는 Ctrl+F5도 대상 컴퓨터에 전달되므로 브라우저 새로고침 전에 제어 종료 필요.
 - 자동 검증 범위는 IME/수정키 이벤트 상태와 HID 보고서. 실제 대상 앱의 한글 표시 검증은 사용자 재시험으로 확인 필요.
+
+## 2026-10-10 20:27 KST — CodexCode — 캡처 영상 전체 화면 기능
+
+- 사용자 지시: 비디오 캡처 영상이 보일 때 전체 화면 기능 추가, 완료 후 컴파일 및 GitHub 배포.
+- `static/index.html`: USB KVM 콘솔 전체 화면 버튼 및 전체 화면 안의 종료 버튼/Esc 안내 추가. `static/style.css`: 화면을 viewport 전체로 확장하고 원본 영상 비율 유지, 종료 UI 표시.
+- `static/app.js`: 캡처 영상 준비/표시 상태 기반 버튼 활성화, Fullscreen API 진입/종료, 실제 fullscreenchange에 따른 상태 갱신, Esc/로그아웃/영상 끊김 시 복귀 및 눌린 USB 입력 해제. USB 제어가 미연결이어도 영상 전체 화면은 허용.
+- MJPEG load 이벤트가 지연되는 경우를 위해 이미지의 실제 decoded dimensions도 사용하여 표시 여부 판단.
+- `tests/test_browser.js`: 프레임 표시 전 비활성화, MJPEG dimensions, USB 없이 영상 보기, 진입/종료, Esc 입력 해제, 영상 신호 끊김, 미지원/거부 처리 검증 추가.
+- 버전 0.3.0으로 변경. 로컬 README 사용자 내용을 보존하고 토큰 없는 문서 복사본으로 빌드/배포 준비.
+- Pi 현재 환경에는 실제 캡처 입력 장치가 없고 KVM_VIDEO_DEVICE는 비어 있음. UI 도구에 연결된 브라우저도 없어 실제 캡처 영상/브라우저 시각 검증은 현재 불가. 이벤트 동작은 자동 테스트로 검증.
+- 기준: https://fullscreen.spec.whatwg.org/ (Element requestFullscreen, Document exitFullscreen/fullscreenchange).
+
+## 2026-10-10 20:31 KST — CodexCode — 전체 화면 컴파일 및 Pi 설치
+
+- 로컬/Pi에서 Python 40개 + Node 17개 테스트 통과. node --check 및 Python compileall 완료.
+- v0.3.0 wheel/source archive 빌드 성공. 실제 캡처 장치 없이도 영상 표시 상태와 Fullscreen API 이벤트 흐름, 실패/종료/해제 동작 검증.
+- Pi에 웹 파일/버전을 반영하고 KVM 웹 서비스를 재시작. USB gadget 재등록 없이 USB configured 및 KVM 서비스 active 확인.
+- 현재 실제 캡처 영상은 미설정 상태로, 실제 브라우저/영상의 시각 검증은 하지 않았음. GitHub 배포 및 최종 HTTP 검증 결과는 아래에 기록.

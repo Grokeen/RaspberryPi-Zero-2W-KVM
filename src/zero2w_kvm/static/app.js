@@ -5,6 +5,8 @@ let authenticated = false, capturing = false, keyboardOnly = false;
 let chain = Promise.resolve(), pending = 0, keys = new Set();
 let dx = 0, dy = 0, wheel = 0, buttons = 0, mouseDirty = false;
 let videoStarted = false;
+// 2026-10-10 20:23 KST: CodexCode - enable fullscreen only after a capture frame is displayed.
+let videoReady = false, videoLoaded = false, fullscreenChanging = false;
 // 2026-10-10 00:24 KST: USB target control becomes available after host enumeration.
 let usbConnected = false;
 const usbHint = "USB 대상 컴퓨터의 연결이 인식되지 않았습니다. Pi의 USB 포트를 데이터 케이블로 연결하고 대상 컴퓨터를 켜세요.";
@@ -21,6 +23,47 @@ const known = new Set([
 ]);
 
 function notice(message) { $("notice").textContent = message; }
+function isVideoFullscreen() { return document.fullscreenElement === $("screen"); }
+function fullscreenUI() {
+  const active = isVideoFullscreen();
+  const supported = typeof $("screen").requestFullscreen === "function" && document.fullscreenEnabled !== false;
+  $("video-fullscreen").disabled = fullscreenChanging || (!active && (!videoReady || !videoLoaded || !supported));
+  $("video-fullscreen").textContent = active ? "전체 화면 종료" : "전체 화면";
+  $("video-fullscreen").setAttribute("aria-pressed", String(active));
+  $("video-fullscreen").title = !supported ? "이 브라우저는 전체 화면을 지원하지 않습니다." : !videoReady || !videoLoaded ? "캡처 영상이 표시되면 사용할 수 있습니다." : "영상 전체 화면 전환";
+  $("fullscreen-exit").disabled = fullscreenChanging;
+}
+async function exitVideoFullscreen() {
+  if (!isVideoFullscreen()) return;
+  stopCapture();
+  try { await document.exitFullscreen(); }
+  catch { notice("전체 화면을 종료하지 못했습니다. Esc를 눌러 종료하세요."); }
+  finally { fullscreenUI(); }
+}
+$("video-fullscreen").addEventListener("click", async () => {
+  if (fullscreenChanging) return;
+  if (isVideoFullscreen()) { await exitVideoFullscreen(); return; }
+  if (!videoReady || !videoLoaded) { notice("캡처 영상이 표시된 뒤 전체 화면을 사용할 수 있습니다."); return; }
+  if (typeof $("screen").requestFullscreen !== "function" || document.fullscreenEnabled === false) {
+    notice("이 브라우저에서는 영상 전체 화면을 사용할 수 없습니다."); return;
+  }
+  fullscreenChanging = true; fullscreenUI();
+  try { await $("screen").requestFullscreen(); }
+  catch { notice("전체 화면 전환에 실패했습니다. 브라우저의 전체 화면 허용 여부를 확인하세요."); }
+  finally { fullscreenChanging = false; fullscreenUI(); }
+});
+$("fullscreen-exit").addEventListener("click", event => { event.stopPropagation(); exitVideoFullscreen(); });
+document.addEventListener("fullscreenchange", () => {
+  fullscreenUI();
+  if (isVideoFullscreen()) {
+    if (!authenticated || !videoReady || !videoLoaded) { exitVideoFullscreen(); return; }
+    $("screen").focus();
+  } else stopCapture();
+});
+document.addEventListener("fullscreenerror", () => {
+  fullscreenChanging = false; fullscreenUI();
+  notice("브라우저가 영상 전체 화면 전환을 허용하지 않았습니다.");
+});
 function usbControls() {
   $("capture").disabled = !usbConnected;
   $("release").disabled = !usbConnected;
@@ -30,6 +73,8 @@ function usbControls() {
 function showLogin() {
   authenticated = false;
   stopCapture();
+  videoReady = videoLoaded = false;
+  exitVideoFullscreen(); fullscreenUI();
   $("login-panel").hidden = false;
   $("console-panel").hidden = true;
   $("connection").textContent = "인증 필요";
@@ -93,7 +138,8 @@ $("capture").addEventListener("click", () => {
   capturing = keyboardOnly = true;
   $("screen").focus(); captureUI(); input({type: "heartbeat"});
 });
-$("screen").addEventListener("click", async () => {
+$("screen").addEventListener("click", async event => {
+  if (event.target?.closest?.("#fullscreen-controls")) return;
   if (!authenticated || document.pointerLockElement === $("screen")) return;
   if (!usbConnected) { notice(usbHint); return; }
   try { await $("screen").requestPointerLock(); }
@@ -121,7 +167,7 @@ function syncModifiers(event) {
 for (const type of ["keydown", "keyup"]) document.addEventListener(type, event => {
   if (!capturing) return;
   event.preventDefault();
-  if (event.code === "Escape") { stopCapture(); return; }
+  if (event.code === "Escape") { stopCapture(); exitVideoFullscreen(); return; }
   if (!known.has(event.code)) { notice(`지원하지 않는 키: ${event.code}`); return; }
   const previous = [...keys].join("\0");
   if (type === "keydown") {
@@ -194,18 +240,29 @@ async function status() {
     $("usb-guide").hidden = usbConnected;
     $("video-status").textContent = result.video.error || (result.video.ready ? `${result.video.size} · ${result.video.fps} fps` : result.video.enabled ? "영상 신호 대기" : "캡처 장치 미설정");
     $("video-message").textContent = result.video.error || "화면 영상은 HDMI 캡처 장치를 설정한 뒤 표시됩니다.";
+    videoReady = Boolean(result.video.ready);
     if (result.video.ready && !videoStarted) {
+      videoLoaded = false;
       $("video").src = "/api/video"; videoStarted = true;
       $("video").hidden = false; $("video-placeholder").hidden = true;
     }
     if (!result.video.ready) {
+      videoLoaded = false;
       $("video").hidden = true; $("video-placeholder").hidden = false;
       $("video").removeAttribute("src"); videoStarted = false;
+      exitVideoFullscreen();
     }
+    // Some MJPEG browsers delay load while the stream remains open; decoded dimensions prove a frame exists.
+    if (videoReady && videoStarted && !$("video").hidden && $("video").naturalWidth > 0 && $("video").naturalHeight > 0) videoLoaded = true;
+    fullscreenUI();
   } catch (error) {
     if (authenticated) { stopCapture(); notice(`연결 확인 실패: ${error.message}`); $("connection").textContent = "연결 끊김"; }
   }
 }
-$("video").addEventListener("error", () => { videoStarted = false; });
+$("video").addEventListener("load", () => { videoLoaded = videoStarted && videoReady; fullscreenUI(); });
+$("video").addEventListener("error", () => {
+  videoStarted = videoLoaded = false;
+  fullscreenUI(); exitVideoFullscreen();
+});
 status();
 setInterval(status, 3000);

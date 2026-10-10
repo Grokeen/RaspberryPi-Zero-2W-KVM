@@ -7,7 +7,8 @@ const vm = require("node:vm");
 const path = require("node:path");
 const source = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/app.js"), "utf8");
 
-function fixture(usbState = "configured") {
+function fixture(usbState = "configured", options = {}) {
+  let videoReady = Boolean(options.videoReady);
   class Element {
     constructor() { this.listeners = {}; this.dataset = {}; this.classList = {add() {}, remove() {}}; }
     addEventListener(type, listener) { (this.listeners[type] ||= []).push(listener); }
@@ -16,6 +17,12 @@ function fixture(usbState = "configured") {
     removeAttribute() {}
     setAttribute(name, value) { this[name] = value; }
     async requestPointerLock() { this.pointerLockRequested = true; }
+    async requestFullscreen() {
+      this.fullscreenRequests = (this.fullscreenRequests || 0) + 1;
+      if (options.fullscreenReject) throw new Error("denied");
+      document.fullscreenElement = this;
+      await document.fire("fullscreenchange");
+    }
   }
   const elements = new Map();
   const document = new Element();
@@ -25,18 +32,22 @@ function fixture(usbState = "configured") {
   };
   document.querySelectorAll = () => [];
   document.exitPointerLock = () => { document.pointerLockElement = null; };
+  document.fullscreenElement = null;
+  document.fullscreenEnabled = options.fullscreenSupported !== false;
+  document.exitFullscreen = async () => { document.fullscreenElement = null; await document.fire("fullscreenchange"); };
   const window = new Element(), events = [], intervals = [];
   const context = vm.createContext({document, window, AbortSignal, Promise, Set,
     setInterval: callback => intervals.push(callback),
     fetch: async (url, options) => {
       if (url === "/api/input") events.push(JSON.parse(options.body));
       return {ok: true, status: 200, json: async () => url === "/api/status" ? {
-        hid: {keyboard: true, mouse: true, usb_state: usbState}, video: {ready: false, enabled: false}
+        hid: {keyboard: true, mouse: true, usb_state: usbState}, video: {ready: videoReady, enabled: videoReady}
       } : {ok: true}};
     }
   });
   vm.runInContext(source, context);
   return {context, document, window, elements, events, intervals,
+    setVideoReady: value => { videoReady = value; },
     run: code => vm.runInContext(code, context)};
 }
 
@@ -140,6 +151,90 @@ test("detached USB disables capture and clicking the screen only shows wiring gu
   assert.equal(f.elements.get("screen").pointerLockRequested, undefined);
   assert.deepEqual(f.events, []);
   assert.match(f.elements.get("notice").textContent, /데이터 케이블/);
+});
+
+// 2026-10-10 20:23 KST: capture fullscreen availability, exit/release and failure paths.
+test("video fullscreen is disabled without a displayed capture frame", async () => {
+  const f = fixture("configured", {videoReady: true});
+  await f.run("status()");
+  assert.equal(f.elements.get("video-fullscreen").disabled, true);
+  await f.elements.get("video-fullscreen").fire("click");
+  assert.equal(f.document.fullscreenElement, null);
+  await f.elements.get("video").fire("load");
+  assert.equal(f.elements.get("video-fullscreen").disabled, false);
+});
+
+test("a decoded MJPEG frame enables fullscreen even when its load event is delayed", async () => {
+  const f = fixture("configured", {videoReady: true});
+  await f.run("status()");
+  f.elements.get("video").naturalWidth = 640;
+  f.elements.get("video").naturalHeight = 480;
+  await f.run("status()");
+  assert.equal(f.elements.get("video-fullscreen").disabled, false);
+});
+
+test("displayed capture video enters fullscreen independently of USB control", async () => {
+  const f = fixture("not attached", {videoReady: true});
+  await f.run("status()");
+  await f.elements.get("video").fire("load");
+  await f.elements.get("video-fullscreen").fire("click");
+  assert.equal(f.document.fullscreenElement, f.elements.get("screen"));
+  assert.equal(f.elements.get("video-fullscreen")["aria-pressed"], "true");
+  assert.equal(f.elements.get("video-fullscreen").textContent, "전체 화면 종료");
+  assert.deepEqual(f.events, []);
+  await f.elements.get("fullscreen-exit").fire("click", {stopPropagation() {}});
+  assert.equal(f.document.fullscreenElement, null);
+  assert.equal(f.elements.get("video-fullscreen").textContent, "전체 화면");
+});
+
+test("Escape leaves capture fullscreen and releases held USB input", async () => {
+  const f = fixture("configured", {videoReady: true});
+  await f.run("status()");
+  await f.elements.get("video").fire("load");
+  await f.elements.get("video-fullscreen").fire("click");
+  await f.elements.get("capture").fire("click");
+  await f.document.fire("keydown", {code: "ShiftLeft", shiftKey: true, preventDefault() {}});
+  await f.document.fire("keydown", {code: "Escape", preventDefault() {}});
+  await f.run("chain");
+  assert.equal(f.document.fullscreenElement, null);
+  assert.equal(f.run("capturing"), false);
+  assert.deepEqual(f.events.at(-1), {type: "release"});
+});
+
+test("native browser fullscreen exit also releases USB input without a key event", async () => {
+  const f = fixture("configured", {videoReady: true});
+  await f.run("status()");
+  await f.elements.get("video").fire("load");
+  await f.elements.get("video-fullscreen").fire("click");
+  await f.elements.get("capture").fire("click");
+  f.document.fullscreenElement = null;
+  await f.document.fire("fullscreenchange");
+  await f.run("chain");
+  assert.equal(f.run("capturing"), false);
+  assert.deepEqual(f.events.at(-1), {type: "release"});
+});
+
+test("capture signal loss exits fullscreen and disables the button", async () => {
+  const f = fixture("configured", {videoReady: true});
+  await f.run("status()");
+  await f.elements.get("video").fire("load");
+  await f.elements.get("video-fullscreen").fire("click");
+  f.setVideoReady(false);
+  await f.run("status()");
+  assert.equal(f.document.fullscreenElement, null);
+  assert.equal(f.elements.get("video-fullscreen").disabled, true);
+});
+
+test("browser rejection and unsupported fullscreen leave the video inline", async () => {
+  for (const option of [{fullscreenReject: true}, {fullscreenSupported: false}]) {
+    const f = fixture("configured", {videoReady: true, ...option});
+    await f.run("status()");
+    await f.elements.get("video").fire("load");
+    await f.elements.get("video-fullscreen").fire("click");
+    assert.equal(f.document.fullscreenElement, null);
+    assert.equal(f.run("fullscreenChanging"), false);
+    assert.match(f.elements.get("notice").textContent, /전체 화면/);
+  }
 });
 
 // 2026-10-09 23:42 KST: CodexCode - isolate Pi desktop controls and cancel stale connections.
