@@ -43,6 +43,14 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.request("/api/input", {"type": "release"})[0], 401)
         self.assertEqual(self.reports, [])
 
+    # 2026-10-11 15:27 KST: the key planner is available with the normal console assets.
+    def test_text_planner_asset_is_served_as_javascript(self):
+        code, headers, body = self.request("/text-entry.js")
+        self.assertEqual(code, 200)
+        self.assertIn("text/javascript", headers["Content-Type"])
+        self.assertIn(b"KVMText", body)
+        self.assertEqual(self.reports, [])
+
     def test_login_cookie_authentication_logout_and_release(self):
         code, headers, _ = self.request("/api/login", {"token": TOKEN})
         self.assertEqual(code, 200)

@@ -64,3 +64,12 @@ footer { padding-top: 0; color: #7d90aa; font-size: 12px; }
 .pi-clipboard textarea:focus-visible { outline: 2px solid #75dfbb; outline-offset: 3px; }
 .pi-clipboard .toolbar { margin-top: 12px; margin-bottom: 0; }
 .pi-clipboard .hint { margin-bottom: 0; }
+/* 2026-10-11 15:27 KST: CodexCode - USB text editor and keyboard/IME settings. */
+.text-entry { margin-top: 20px; }
+.text-entry textarea, .text-entry select { width: 100%; padding: 13px; border: 1px solid #415371; border-radius: 8px; background: #0b1422; color: #e6edf5; font: inherit; }
+.text-entry textarea { min-height: 110px; resize: vertical; }
+.text-entry textarea:focus-visible, .text-entry select:focus-visible { outline: 2px solid #75dfbb; outline-offset: 3px; }
+.text-options { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.text-entry .toolbar { margin-top: 16px; margin-bottom: 0; }
+#text-status { color: #75dfbb; font-size: 14px; }
+@media (max-width: 600px) { .text-options { grid-template-columns: 1fr; gap: 0; } }

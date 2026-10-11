@@ -9,6 +9,8 @@ let videoStarted = false;
 let videoReady = false, videoLoaded = false, fullscreenChanging = false;
 // 2026-10-10 00:24 KST: USB target control becomes available after host enumeration.
 let usbConnected = false;
+// 2026-10-11 15:27 KST: CodexCode - cancellable text typing through existing USB tap reports.
+let typing = false, typingCancelled = false;
 const usbHint = "USB 대상 컴퓨터의 연결이 인식되지 않았습니다. Pi의 USB 포트를 데이터 케이블로 연결하고 대상 컴퓨터를 켜세요.";
 const known = new Set([
   ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(v => `Key${v}`),
@@ -65,13 +67,19 @@ document.addEventListener("fullscreenerror", () => {
   notice("브라우저가 영상 전체 화면 전환을 허용하지 않았습니다.");
 });
 function usbControls() {
-  $("capture").disabled = !usbConnected;
+  const blocked = !authenticated || !usbConnected || typing;
+  $("capture").disabled = blocked;
   $("release").disabled = !usbConnected;
-  document.querySelectorAll("[data-keys]").forEach(button => { button.disabled = !usbConnected; });
+  document.querySelectorAll("[data-keys]").forEach(button => { button.disabled = blocked; });
+  for (const id of ["type-text", "text-layout", "text-send"]) $(id).disabled = blocked;
+  $("text-ime").disabled = blocked || $("text-layout").value !== "ko";
+  $("text-stop").disabled = !typing || typingCancelled;
   $("screen").setAttribute("aria-disabled", String(!usbConnected));
 }
 function showLogin() {
   authenticated = false;
+  cancelTextEntry();
+  $("type-text").value = "";
   stopCapture();
   videoReady = videoLoaded = false;
   exitVideoFullscreen(); fullscreenUI();
@@ -97,7 +105,7 @@ async function api(path, data) {
   }
   return result;
 }
-function input(data) {
+function input(data, failFast = false) {
   if (!authenticated) return Promise.resolve();
   if (!usbConnected && data.type !== "release") { notice(usbHint); return Promise.resolve(); }
   pending++;
@@ -106,8 +114,52 @@ function input(data) {
     notice(error.message);
     if (data.type !== "release") stopCapture();
   }).finally(() => pending--);
-  return chain;
+  return failFast ? task : chain;
 }
+function cancelTextEntry() {
+  if (!typing) return;
+  typingCancelled = true;
+  $("text-status").textContent = "입력 중지 중…";
+  usbControls();
+}
+async function typeText() {
+  if (typing || !authenticated) return;
+  if (!usbConnected) { notice(usbHint); return; }
+  let plan;
+  try { plan = KVMText.plan($("type-text").value, $("text-layout").value || "us", $("text-ime").value || "AltRight"); }
+  catch (error) { $("text-status").textContent = error.message; return; }
+  typing = true; typingCancelled = false;
+  let progress = 0, korean = false, failure = null;
+  stopCapture(); usbControls();
+  $("text-status").textContent = `입력 중 · 0 / ${plan.total}자`;
+  try {
+    await chain;
+    for (const step of plan.steps) {
+      if (typingCancelled || !authenticated || !usbConnected) break;
+      await input({type: "tap", codes: step.codes}, true);
+      if (typeof step.ime === "boolean") korean = step.ime;
+      if (step.progress) progress = step.progress;
+      $("text-status").textContent = `입력 중 · ${progress} / ${plan.total}자`;
+      if (step.delay) await new Promise(resolve => setTimeout(resolve, step.delay));
+    }
+  } catch (error) { failure = error.message; }
+  finally {
+    if (authenticated && usbConnected) {
+      try {
+        if (korean) await input({type: "tap", codes: ($("text-ime").value || "AltRight").split(",")}, true);
+        await input({type: "release"}, true);
+      } catch (error) { failure = failure || error.message; }
+    }
+    const cancelled = typingCancelled || !authenticated || !usbConnected;
+    typing = false; usbControls();
+    $("text-status").textContent = failure ? `입력 실패 · ${progress} / ${plan.total}자 · ${failure}`
+      : cancelled ? `입력 중지 · ${progress} / ${plan.total}자` : `입력 완료 · ${plan.total}자`;
+  }
+}
+$("type-text").addEventListener("focus", stopCapture);
+$("text-layout").addEventListener("change", usbControls);
+$("text-send").addEventListener("click", typeText);
+$("text-stop").addEventListener("click", cancelTextEntry);
 function captureUI() {
   $("capture").textContent = capturing ? "키보드 제어 종료" : "키보드 제어 시작";
   $("capture-label").hidden = !capturing;
@@ -133,12 +185,14 @@ $("login-form").addEventListener("submit", async event => {
   finally { button.disabled = false; }
 });
 $("capture").addEventListener("click", () => {
+  if (typing) return;
   if (!usbConnected) { notice(usbHint); return; }
   if (capturing) { stopCapture(); return; }
   capturing = keyboardOnly = true;
   $("screen").focus(); captureUI(); input({type: "heartbeat"});
 });
 $("screen").addEventListener("click", async event => {
+  if (typing) return;
   if (event.target?.closest?.("#fullscreen-controls")) return;
   if (!authenticated || document.pointerLockElement === $("screen")) return;
   if (!usbConnected) { notice(usbHint); return; }
@@ -147,7 +201,7 @@ $("screen").addEventListener("click", async event => {
 });
 document.addEventListener("pointerlockchange", () => {
   if (document.pointerLockElement === $("screen")) {
-    if (!usbConnected) { document.exitPointerLock(); return; }
+    if (!usbConnected || typing) { document.exitPointerLock(); return; }
     capturing = true; keyboardOnly = false; $("screen").focus();
     captureUI(); input({type: "heartbeat"});
   } else if (!keyboardOnly) stopCapture();
@@ -165,6 +219,10 @@ function syncModifiers(event) {
   }
 }
 for (const type of ["keydown", "keyup"]) document.addEventListener(type, event => {
+  if (typing) {
+    if (type === "keydown" && event.code === "Escape") { event.preventDefault(); cancelTextEntry(); }
+    return;
+  }
   if (!capturing) return;
   event.preventDefault();
   if (event.code === "Escape") { stopCapture(); exitVideoFullscreen(); return; }
@@ -206,21 +264,25 @@ function flushMouse() {
 setInterval(flushMouse, 33);
 setInterval(() => { if (capturing && pending < 2) input({type: "heartbeat"}); }, 700);
 $("release").addEventListener("click", () => {
+  cancelTextEntry();
   stopCapture(); input({type: "release"});
 });
 $("logout").addEventListener("click", async () => {
+  cancelTextEntry();
   stopCapture();
   await chain;
   try { await api("/api/logout", {}); } catch (error) { notice(error.message); }
   showLogin();
 });
 document.querySelectorAll("[data-keys]").forEach(button => button.addEventListener("click", () => {
+  if (typing) return;
   stopCapture();
   input({type: "tap", codes: button.dataset.keys.split(",")});
 }));
-window.addEventListener("blur", stopCapture);
-document.addEventListener("visibilitychange", () => { if (document.hidden) stopCapture(); });
+window.addEventListener("blur", () => { cancelTextEntry(); stopCapture(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) { cancelTextEntry(); stopCapture(); } });
 window.addEventListener("pagehide", () => {
+  cancelTextEntry();
   if (authenticated) fetch("/api/input", {method: "POST", credentials: "same-origin", keepalive: true,
     headers: {"Content-Type": "application/json"}, body: JSON.stringify({type: "release"})}).catch(() => {});
 });
@@ -232,6 +294,7 @@ async function status() {
     const ready = result.hid.keyboard && result.hid.mouse;
     const connected = result.hid.usb_state === "configured";
     usbConnected = ready && connected;
+    if (!usbConnected) cancelTextEntry();
     usbControls();
     if (!usbConnected && capturing) stopCapture();
     $("connection").textContent = connected ? "USB 연결됨" : "콘솔 연결됨";
@@ -256,7 +319,7 @@ async function status() {
     if (videoReady && videoStarted && !$("video").hidden && $("video").naturalWidth > 0 && $("video").naturalHeight > 0) videoLoaded = true;
     fullscreenUI();
   } catch (error) {
-    if (authenticated) { stopCapture(); notice(`연결 확인 실패: ${error.message}`); $("connection").textContent = "연결 끊김"; }
+    if (authenticated) { cancelTextEntry(); stopCapture(); notice(`연결 확인 실패: ${error.message}`); $("connection").textContent = "연결 끊김"; }
   }
 }
 $("video").addEventListener("load", () => { videoLoaded = videoStarted && videoReady; fullscreenUI(); });

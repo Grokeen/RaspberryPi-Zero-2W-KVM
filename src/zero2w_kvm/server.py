@@ -178,6 +178,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         assets = {"/": ("index.html", "text/html; charset=utf-8"),
                   "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                  # 2026-10-11 15:27 KST: validated USB text-to-key planning in the browser.
+                  "/text-entry.js": ("text-entry.js", "text/javascript; charset=utf-8"),
                   "/style.css": ("style.css", "text/css; charset=utf-8"),
                   "/pi": ("pi.html", "text/html; charset=utf-8"),
                   "/pi.js": ("pi.js", "text/javascript; charset=utf-8")}

@@ -189,3 +189,16 @@
 - GitHub CI `38106678525` completed/success 확인: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38106678525
 - 최종 wheel/source archive 빌드 및 배포 파일 동일성 검사 성공. 소스 패키지와 Git staging에서 실제 접속 비밀정보가 제외된 것을 검사했습니다. 사용자 로컬 README 변경은 그대로 보존했습니다.
 - Pi의 `~/zero2w-kvm-source`에도 동일한 소스/테스트/설치 스크립트/공개 문서를 반영하고 설치된 런타임과 주요 파일의 byte 일치를 확인했습니다. 기존 Pi 소스는 `~/zero2w-kvm-source-backup-clipboard-sgg603qe`에 보존했습니다.
+
+## 2026-10-11 15:36 KST — CodexCode — USB 대상 텍스트 입력 칸과 버튼
+
+- 사용자 요청: USB KVM으로 연결한 Windows/Linux/macOS 대상 기기에 텍스트 입력 칸의 내용을 버튼으로 전달. 수신 프로그램을 추가하는 대신 기존 USB HID 키보드 입력을 사용합니다.
+- `static/text-entry.js` 추가: US 키 배열의 영문/숫자/기호/공백/Enter/Tab 변환, 한글 두벌식 음절 분해와 일부 단독 자모, 한/영 전환키 계획. 전체 텍스트를 검증한 뒤 시작하며 미지원 문자/이모지/제어 문자와 2,000자 초과를 사전에 거부합니다. CRLF는 한 번의 Enter로 처리합니다.
+- `static/index.html`, `app.js`, `style.css`: 텍스트 입력 칸, 입력 방식/한영 전환키 선택, ‘대상 기기에 입력’/‘입력 중지’ 버튼, 문자 진행 상태 추가. 입력 칸 포커스 시 기존 키보드 캡처를 해제하여 로컬 Ctrl+V를 사용할 수 있게 했습니다.
+- 기존 `/api/input`의 tap 요청을 순서대로 실행합니다. 입력 중 다른 UI 입력을 잠그고, Esc/중지/로그아웃/창 이탈/USB 연결 끊김/요청 실패 시 다음 문자를 중지합니다. 정상 중지 시 한/영 상태를 영문으로 복구하고 HID 입력을 해제합니다. 서버에 장시간 입력 작업이나 입력 내용을 저장하지 않습니다.
+- `server.py`: `/text-entry.js` 정적 파일 경로 추가. `tests/test_server.py`에 정적 자산 응답 테스트 추가. `tests/test_browser.js`에 키 배열/한글 혼합/미지원 문자 사전 거부/순서/중지/오류/IME 복귀/텍스트 포커스 테스트 9개 추가.
+- 버전을 0.3.2로 변경하고 두 화면 footer를 갱신했습니다. 사용자 로컬 README 변경을 보존하고 안전한 공개 문서 복사본에 사용법을 추가해 wheel/source archive를 빌드했습니다.
+- 검증: Windows Python 41개 + Pi Node 31개, 합계 72개 통과. Python compileall, JavaScript 구문 검사, 패키지 자산과 로컬 파일의 byte 일치/비밀정보 파일 제외 검사 완료. 지원 OS 전체의 실제 앱 입력/한글 IME 조합은 수동 실기 검증하지 않았습니다.
+- Pi 설치 전 런타임을 `/opt/zero2w-kvm-backup-text-entry-7y8kzfki`에 보존했습니다. 웹 서비스만 갱신하여 API 버전 0.3.2, 실제 제공 HTML/app.js/text-entry.js/CSS 일치, KVM/desktop/proxy/gadget 서비스 active 및 USB configured를 확인했습니다. USB 장치 재등록/boot 변경/수신 프로그램 설치는 하지 않았습니다.
+- 사용 조건: 대상 커서를 먼저 선택하고 영문 상태·Caps Lock 꺼짐·US 배열로 시작합니다. 한글은 대상의 두벌식 입력기와 실제 한/영 전환키 설정이 맞아야 합니다. 앱의 자동 교정/자동 들여쓰기 등의 영향은 실제 키보드 입력과 같습니다. 줄바꿈은 Enter, 탭은 Tab으로 전달됩니다.
+- 참고: https://docs.pikvm.org/api/ (text-as-keys), https://learn.microsoft.com/en-us/globalization/input/korean-ime (오른쪽 Alt 및 한글 입력기), https://support.apple.com/en-gb/guide/mac-help/-mchl84525d76/mac (입력 소스 설정).

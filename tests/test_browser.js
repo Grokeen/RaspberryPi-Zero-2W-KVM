@@ -6,6 +6,8 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const path = require("node:path");
 const source = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/app.js"), "utf8");
+// 2026-10-11 15:27 KST: CodexCode - exercise textbox typing with the real text planner.
+const textSource = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/text-entry.js"), "utf8");
 
 function fixture(usbState = "configured", options = {}) {
   let videoReady = Boolean(options.videoReady);
@@ -36,15 +38,24 @@ function fixture(usbState = "configured", options = {}) {
   document.fullscreenEnabled = options.fullscreenSupported !== false;
   document.exitFullscreen = async () => { document.fullscreenElement = null; await document.fire("fullscreenchange"); };
   const window = new Element(), events = [], intervals = [];
-  const context = vm.createContext({document, window, AbortSignal, Promise, Set,
+  const context = vm.createContext({document, window, AbortSignal, Promise, Set, setTimeout,
     setInterval: callback => intervals.push(callback),
     fetch: async (url, options) => {
-      if (url === "/api/input") events.push(JSON.parse(options.body));
+      if (url === "/api/input") {
+        const data = JSON.parse(options.body);
+        events.push(data);
+        optionsCallback(data);
+        if (data.type === "tap" && optionsFailAt === events.filter(event => event.type === "tap").length) {
+          return {ok: false, status: 503, json: async () => ({code: "usb_disconnected", error: "Target disconnected"})};
+        }
+      }
       return {ok: true, status: 200, json: async () => url === "/api/status" ? {
         hid: {keyboard: true, mouse: true, usb_state: usbState}, video: {ready: videoReady, enabled: videoReady}
       } : {ok: true}};
     }
   });
+  const optionsCallback = options.onInput || (() => {}), optionsFailAt = options.failInputAt;
+  vm.runInContext(textSource, context);
   vm.runInContext(source, context);
   return {context, document, window, elements, events, intervals,
     setVideoReady: value => { videoReady = value; },
@@ -235,6 +246,113 @@ test("browser rejection and unsupported fullscreen leave the video inline", asyn
     assert.equal(f.run("fullscreenChanging"), false);
     assert.match(f.elements.get("notice").textContent, /전체 화면/);
   }
+});
+
+function textPlan(text, layout = "us", imeKey = "AltRight") {
+  const context = vm.createContext({});
+  vm.runInContext(textSource, context);
+  return JSON.parse(JSON.stringify(context.KVMText.plan(text, layout, imeKey)));
+}
+
+test("USB text planner maps case, shifted punctuation, tabs and Windows line endings", () => {
+  const plan = textPlan("A !\t\r\nz");
+  assert.equal(plan.total, 6);
+  assert.deepEqual(plan.steps.map(step => step.codes), [
+    ["ShiftLeft", "KeyA"], ["Space"], ["ShiftLeft", "Digit1"], ["Tab"], ["Enter"], ["KeyZ"]
+  ]);
+});
+
+test("Hangul typing decomposes syllables and returns to English across mixed text", () => {
+  const plan = textPlan("각A값", "ko");
+  assert.deepEqual(plan.steps.map(step => step.codes), [
+    ["AltRight"], ["KeyR"], ["KeyK"], ["KeyR"], ["AltRight"], ["ShiftLeft", "KeyA"],
+    ["AltRight"], ["KeyR"], ["KeyK"], ["KeyQ"], ["KeyT"], ["AltRight"]
+  ]);
+  assert.deepEqual(plan.steps.filter(step => "ime" in step).map(step => step.ime), [true, false, true, false]);
+  assert.equal(textPlan("쌍ㅏㄱ", "ko").steps.at(-1).ime, false);
+  assert.deepEqual(textPlan("쌍", "ko").steps[1].codes, ["ShiftLeft", "KeyT"]);
+  for (const hotkey of ["ControlLeft,Space", "ShiftLeft,Space", "MetaLeft,Space"]) {
+    assert.deepEqual(textPlan("한", "ko", hotkey).steps[0].codes, hotkey.split(","));
+  }
+});
+
+test("unsupported Unicode, control characters and excessive text are rejected before typing", () => {
+  for (const text of ["ok😀", "text\x00", "한글"]) assert.throws(() => textPlan(text));
+  assert.throws(() => textPlan("a".repeat(2001)));
+  assert.throws(() => textPlan("한", "ko", "MetaLeft,KeyR"));
+  assert.equal(textPlan(" \n\t").total, 3);
+});
+
+test("USB textbox sends ordered key taps and a final release without keyboard capture", async () => {
+  const f = fixture();
+  await f.run("status()");
+  f.elements.get("type-text").value = "Ab\n";
+  await f.elements.get("text-send").fire("click");
+  assert.deepEqual(f.events, [
+    {type: "tap", codes: ["ShiftLeft", "KeyA"]}, {type: "tap", codes: ["KeyB"]},
+    {type: "tap", codes: ["Enter"]}, {type: "release"}
+  ]);
+  assert.equal(f.run("capturing"), false);
+  assert.equal(f.run("typing"), false);
+  assert.match(f.elements.get("text-status").textContent, /입력 완료 · 3자/);
+});
+
+test("invalid text and detached USB never start a partial typing job", async () => {
+  const f = fixture();
+  await f.run("status()");
+  f.elements.get("type-text").value = "abc😀";
+  await f.elements.get("text-send").fire("click");
+  assert.deepEqual(f.events, []);
+  const detached = fixture("not attached");
+  await detached.run("status()");
+  detached.elements.get("type-text").value = "abc";
+  await detached.elements.get("text-send").fire("click");
+  assert.deepEqual(detached.events, []);
+  assert.equal(detached.elements.get("text-send").disabled, true);
+});
+
+test("cancel stops further text taps and releases input", async () => {
+  let f;
+  f = fixture("configured", {onInput: data => { if (data.type === "tap") f.run("cancelTextEntry()"); }});
+  await f.run("status()");
+  f.elements.get("type-text").value = "abc";
+  await f.elements.get("text-send").fire("click");
+  assert.deepEqual(f.events, [{type: "tap", codes: ["KeyA"]}, {type: "release"}]);
+  assert.match(f.elements.get("text-status").textContent, /입력 중지 · 1 \/ 3자/);
+});
+
+test("a target error ends text typing without retries or subsequent characters", async () => {
+  const f = fixture("configured", {failInputAt: 2});
+  await f.run("status()");
+  f.elements.get("type-text").value = "abcd";
+  await f.elements.get("text-send").fire("click");
+  assert.deepEqual(f.events.map(event => event.codes), [["KeyA"], ["KeyB"]]);
+  assert.match(f.elements.get("text-status").textContent, /입력 실패/);
+  assert.equal(f.run("typing"), false);
+});
+
+test("cancelling Korean input returns the IME to English and leaves no held keys", async () => {
+  let f;
+  f = fixture("configured", {onInput: data => { if (data.type === "tap") f.run("cancelTextEntry()"); }});
+  await f.run("status()");
+  f.elements.get("type-text").value = "한글";
+  f.elements.get("text-layout").value = "ko";
+  f.elements.get("text-ime").value = "AltRight";
+  await f.elements.get("text-send").fire("click");
+  assert.deepEqual(f.events, [
+    {type: "tap", codes: ["AltRight"]}, {type: "tap", codes: ["AltRight"]}, {type: "release"}
+  ]);
+  assert.equal(f.run("typing"), false);
+});
+
+test("focusing the USB textbox releases captured keys so local paste stays local", async () => {
+  const f = fixture();
+  await f.run("status()");
+  await f.elements.get("capture").fire("click");
+  await f.elements.get("type-text").fire("focus");
+  await f.run("chain");
+  assert.equal(f.run("capturing"), false);
+  assert.deepEqual(f.events.at(-1), {type: "release"});
 });
 
 // 2026-10-09 23:42 KST: CodexCode - isolate Pi desktop controls and cancel stale connections.

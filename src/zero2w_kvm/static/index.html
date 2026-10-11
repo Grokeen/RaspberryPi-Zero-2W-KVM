@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Zero 2 W KVM</title>
   <link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
+  <script src="/text-entry.js" defer></script><script src="/app.js" defer></script>
 </head>
 <body>
   <header><div><span class="eyebrow">CODEXCODE · USB CONSOLE</span><h1>Zero 2 W KVM</h1></div><span id="connection" class="badge">연결 확인 중</span></header>
@@ -37,11 +37,21 @@
         <button data-keys="F2" class="secondary">F2</button>
         <button data-keys="F12" class="secondary">F12</button>
       </div></div>
+      <!-- 2026-10-11 15:27 KST: CodexCode - enter pasted text on the USB target without a receiver app. -->
+      <div class="card text-entry">
+        <h2>대상 기기에 텍스트 입력</h2>
+        <label for="type-text">입력할 텍스트</label>
+        <textarea id="type-text" rows="4" maxlength="2000" spellcheck="false" autocomplete="off" placeholder="텍스트를 입력하거나 Ctrl+V로 붙여 넣으세요." aria-describedby="text-hint" disabled></textarea>
+        <div class="text-options"><div><label for="text-layout">입력 방식</label><select id="text-layout"><option value="us">영문·숫자·기호 (US 배열)</option><option value="ko">한글 두벌식 + 영문</option></select></div><div><label for="text-ime">대상 기기의 한/영 전환키</label><select id="text-ime" disabled><option value="AltRight">오른쪽 Alt · Windows</option><option value="ControlLeft,Space">Ctrl+Space · macOS / Fcitx</option><option value="ShiftLeft,Space">Shift+Space · Linux 한글 입력기</option><option value="MetaLeft,Space">Win/Super+Space · 입력 소스 전환</option></select></div></div>
+        <div class="toolbar"><button id="text-send" type="button" disabled>대상 기기에 입력</button><button id="text-stop" type="button" class="secondary" disabled>입력 중지</button></div>
+        <p id="text-status" role="status" aria-live="polite"></p>
+        <p id="text-hint" class="hint">대상 기기의 입력할 곳을 먼저 선택하고, 영문 입력 상태·Caps Lock 꺼짐으로 준비한 뒤 버튼을 누르세요. 한글은 한/영 전환이 동작하는 두벌식 입력기를 선택하고 영문 상태에서 시작해야 합니다. 줄바꿈은 Enter, 탭은 Tab 키로 입력됩니다. 최대 2,000자이며 이모지는 지원하지 않습니다. Esc 또는 ‘입력 중지’로 멈출 수 있습니다.</p>
+      </div>
       <div class="status-grid"><div class="card"><h2>USB 연결</h2><p id="usb-status">확인 중</p></div><div class="card"><h2>영상 입력</h2><p id="video-status">확인 중</p></div></div>
       <p class="hint">Pi의 <strong>USB</strong> 포트를 대상 컴퓨터에 데이터 케이블로 연결하세요. 물리 키 위치를 전송하며, 한글 입력은 대상 컴퓨터의 입력기로 처리합니다. Esc는 제어 종료에 사용하며 대상에는 빠른 입력 버튼으로 보낼 수 있습니다.</p>
     </section>
     <p id="notice" role="status" aria-live="polite"></p>
   </main>
-  <footer>Raspberry Pi Zero 2 W · v0.3.1 · 로컬 네트워크 콘솔</footer>
+  <footer>Raspberry Pi Zero 2 W · v0.3.2 · 로컬 네트워크 콘솔</footer>
 </body>
 </html>
