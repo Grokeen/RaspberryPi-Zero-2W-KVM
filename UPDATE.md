@@ -226,3 +226,12 @@
 
 - 수정 커밋 `60c3cf67a56b1df98f437b59f3f14fb7cf6714f2`을 origin/main에 배포했습니다. CI `38124229923` completed/success 확인: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38124229923
 - v0.3.3 wheel/source archive와 공개 문서 준비 완료. 마지막 확인에서도 Pi SSH가 응답하지 않아 실제 Pi 설치와 Pi 편집용 소스 반영은 남아 있습니다. Pi에 적용 완료했다고 보고하지 않습니다.
+
+## 2026-10-11 22:12 KST — CodexCode — Pi 재접속 및 UK 배열 수정 반영 완료
+
+- 사용자 요청으로 접속을 다시 확인했습니다. 기존 SSH 호스트 키 검증과 인증에 성공했고 Pi Zero 2 W, 설치 버전 0.3.2, USB configured 및 관련 서비스 active를 확인했습니다.
+- 준비된 v0.3.3 wheel의 14개 런타임 파일과 현재 로컬 소스가 모두 일치함을 확인했습니다. 업로드 후 wheel SHA256 및 Pi Python 구문을 검증하고 기존 런타임을 `/opt/zero2w-kvm-backup-uk-layout-12i1zbxg`에 보존했습니다.
+- 변경된 `__init__.py`, `static/index.html`, `static/pi.html`, `static/text-entry.js` 4개 파일을 반영하고 웹 서비스만 재시작했습니다. 전체 런타임의 wheel byte 일치, KVM/desktop/proxy/gadget 서비스 active 및 USB configured를 확인했습니다. USB gadget 재등록과 boot 설정 변경은 하지 않았습니다.
+- 실제 HTTP에서 콘솔 HTML, UK 키 계획 스크립트, Pi HTML, app.js와 로컬 파일의 SHA256 일치를 확인했습니다. 인증된 상태 API가 버전 0.3.3을 보고합니다. 기존 자동 검사 76개와 CI 성공으로 검증된 동일 소스를 배포했습니다.
+- `~/zero2w-kvm-source`에도 소스/테스트/설치 스크립트/문서를 반영하고 모든 런타임 파일의 설치본 일치를 확인했습니다. 기존 편집용 소스는 `~/zero2w-kvm-source-backup-uk-layout-icf7tq5i`에 보존했습니다.
+- 이전의 Pi 설치 대기 상태를 해소했습니다. 사용자는 USB KVM 콘솔을 Ctrl+F5로 새로고침하고, 대상이 표준 UK 배열인 경우 ‘UK/영국 배열’을 선택해 재입력할 수 있습니다. 대상 Linux 자체의 키보드/SSH 설정은 변경하지 않았습니다.
