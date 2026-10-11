@@ -202,3 +202,9 @@
 - Pi 설치 전 런타임을 `/opt/zero2w-kvm-backup-text-entry-7y8kzfki`에 보존했습니다. 웹 서비스만 갱신하여 API 버전 0.3.2, 실제 제공 HTML/app.js/text-entry.js/CSS 일치, KVM/desktop/proxy/gadget 서비스 active 및 USB configured를 확인했습니다. USB 장치 재등록/boot 변경/수신 프로그램 설치는 하지 않았습니다.
 - 사용 조건: 대상 커서를 먼저 선택하고 영문 상태·Caps Lock 꺼짐·US 배열로 시작합니다. 한글은 대상의 두벌식 입력기와 실제 한/영 전환키 설정이 맞아야 합니다. 앱의 자동 교정/자동 들여쓰기 등의 영향은 실제 키보드 입력과 같습니다. 줄바꿈은 Enter, 탭은 Tab으로 전달됩니다.
 - 참고: https://docs.pikvm.org/api/ (text-as-keys), https://learn.microsoft.com/en-us/globalization/input/korean-ime (오른쪽 Alt 및 한글 입력기), https://support.apple.com/en-gb/guide/mac-help/-mchl84525d76/mac (입력 소스 설정).
+
+## 2026-10-11 15:40 KST — CodexCode — USB 텍스트 입력 GitHub 배포 완료
+
+- 구현 커밋 `856d4eeee288bc8a06e745170c5afad290bf95bc`을 origin/main에 반영했습니다. CI `38118760759` completed/success 확인: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38118760759
+- Python 41개 + Node 31개 검증 및 v0.3.2 빌드/배포 자산 검사 완료. 사용자 README 변경과 실제 접속 비밀정보는 공개 Git/패키지에 포함하지 않았습니다.
+- Pi 편집용 소스도 갱신하고 주요 파일의 설치본 일치를 확인했습니다. 기존 Pi 소스는 `~/zero2w-kvm-source-backup-text-entry-e6m6dn6m`에 보존했습니다.
