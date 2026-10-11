@@ -262,6 +262,37 @@ test("USB text planner maps case, shifted punctuation, tabs and Windows line end
   ]);
 });
 
+// 2026-10-11 17:02 KST: CodexCode - GB punctuation and sshd pipeline regression.
+test("UK layout maps pipe, backslash, quotes, at sign and hash at UK key positions", () => {
+  assert.deepEqual(textPlan('@"#~\\|£¬', "gb").steps.map(step => step.codes), [
+    ["ShiftLeft", "Quote"], ["ShiftLeft", "Digit2"], ["Backslash"], ["ShiftLeft", "Backslash"],
+    ["IntlBackslash"], ["ShiftLeft", "IntlBackslash"], ["ShiftLeft", "Digit3"], ["ShiftLeft", "Backquote"]
+  ]);
+  assert.equal(textPlan(Array.from({length: 95}, (_, index) => String.fromCharCode(32 + index)).join(""), "gb").total, 95);
+});
+
+test("sshd connection-test command changes only its pipe key between US and UK layouts", () => {
+  const command = "sudo /usr/sbin/sshd -T -C 'user=testuser,host=192.0.2.120,addr=192.0.2.120,laddr=198.51.100.30,lport=22' | grep -i '^allowgroups'";
+  const us = textPlan(command, "us"), gb = textPlan(command, "gb");
+  const changed = us.steps.map((step, index) => JSON.stringify(step.codes) !== JSON.stringify(gb.steps[index].codes) ? index : -1).filter(index => index >= 0);
+  assert.deepEqual(changed, [command.indexOf("|")]);
+  assert.deepEqual(gb.steps[command.indexOf("|")].codes, ["ShiftLeft", "IntlBackslash"]);
+  assert.deepEqual(gb.steps[command.indexOf("-T") + 1].codes, ["ShiftLeft", "KeyT"]);
+  assert.deepEqual(gb.steps[command.indexOf("^")].codes, ["ShiftLeft", "Digit6"]);
+});
+
+test("USB textbox sends the UK pipe through the existing international-backslash key", async () => {
+  const f = fixture();
+  await f.run("status()");
+  f.elements.get("text-layout").value = "gb";
+  f.elements.get("type-text").value = "a|b";
+  await f.elements.get("text-send").fire("click");
+  assert.deepEqual(f.events, [
+    {type: "tap", codes: ["KeyA"]}, {type: "tap", codes: ["ShiftLeft", "IntlBackslash"]},
+    {type: "tap", codes: ["KeyB"]}, {type: "release"}
+  ]);
+});
+
 test("Hangul typing decomposes syllables and returns to English across mixed text", () => {
   const plan = textPlan("각A값", "ko");
   assert.deepEqual(plan.steps.map(step => step.codes), [

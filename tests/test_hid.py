@@ -83,6 +83,10 @@ class HIDTests(unittest.TestCase):
         self.controller.update({"type": "tap", "codes": ["Enter"]}, "a")
         self.assertEqual(self.reports[-1], ("/dev/hidg0", bytes(8)))
 
+    # 2026-10-11 17:02 KST: UK pipe uses Shift + USB non-US backslash (0x64).
+    def test_uk_pipe_uses_existing_iso_keyboard_usage(self):
+        self.assertEqual(keyboard_report(["ShiftLeft", "IntlBackslash"]), bytes([2, 0, 100, 0, 0, 0, 0, 0]))
+
     # 2026-10-10 00:26 KST: detached input must not touch HID or claim the USB lease.
     def test_disconnected_host_rejects_keyboard_mouse_tap_and_heartbeat(self):
         self.controller.state_reader = lambda: "not attached"

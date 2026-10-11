@@ -6,4 +6,5 @@
 # 2026-10-10 20:23 KST: CodexCode - capture video fullscreen controls.
 # 2026-10-11 11:43 KST: CodexCode - Pi desktop clipboard transfer and paste shortcuts.
 # 2026-10-11 15:27 KST: CodexCode - type textbox content on the USB-connected target.
-__version__ = "0.3.2"
+# 2026-10-11 17:02 KST: CodexCode - UK keyboard symbols for USB text input.
+__version__ = "0.3.3"

@@ -208,3 +208,16 @@
 - 구현 커밋 `856d4eeee288bc8a06e745170c5afad290bf95bc`을 origin/main에 반영했습니다. CI `38118760759` completed/success 확인: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38118760759
 - Python 41개 + Node 31개 검증 및 v0.3.2 빌드/배포 자산 검사 완료. 사용자 README 변경과 실제 접속 비밀정보는 공개 Git/패키지에 포함하지 않았습니다.
 - Pi 편집용 소스도 갱신하고 주요 파일의 설치본 일치를 확인했습니다. 기존 Pi 소스는 `~/zero2w-kvm-source-backup-text-entry-e6m6dn6m`에 보존했습니다.
+
+## 2026-10-11 17:15 KST — CodexCode — UK 키보드 배열의 파이프 입력 수정
+
+- 사용자 보고: sshd 연결 조건 검사 명령을 입력한 뒤 `Extra argument /home/...` 발생. 스크린샷의 파이프 `|`가 `~`로 전달된 패턴을 조사했습니다. 원문 명령 구조와 대문자 옵션은 정상입니다.
+- Pi의 표준 XKB `gb` 심볼 표를 확인했습니다. US 입력의 Shift+Backslash는 UK에서 `~`로 해석됩니다. 쉘에서 인용되지 않은 `~`는 홈 경로로 확장되어 원래 파이프 뒤의 명령이 sshd의 추가 인수로 전달될 수 있습니다.
+- `static/text-entry.js`, `index.html`: 표준 UK/영국 배열 선택과 기호 매핑 추가. `|`는 Shift+IntlBackslash, 백슬래시는 IntlBackslash, 큰따옴표/@/#/~ 및 UK 기본 기호를 해당 키 위치로 변환합니다. 기존 US/한글 기본값과 USB descriptor는 유지했습니다.
+- `tests/test_browser.js`에 UK 기호/전체 printable ASCII/sshd 파이프/실제 UI tap 경로 검증 3개, `tests/test_hid.py`에 ISO 키 USB usage 0x64 검증 1개 추가. 버전과 두 화면 footer를 0.3.3으로 갱신했습니다.
+- 검증: Python 42개 + Pi Node 34개, 합계 76개 통과. compileall, JS 구문 검사, wheel/source archive 빌드 및 패키지 자산 일치/비밀 파일 제외 검사 성공.
+- 독립 검증: Linux `libxkbcommon`으로 사용자가 제공한 명령 전체를 해석했습니다. US 계획을 UK에서 해석한 결과는 파이프 한 글자만 `~`로 달랐고, US→US 및 수정된 UK→UK는 원문과 완전히 일치했습니다. 실제 키보드 입력이나 sshd 실행은 하지 않았습니다. 공개 회귀 테스트에는 개인 계정/IP 대신 문서용 테스트 값을 사용했습니다.
+- 대상 Linux의 기존 SSH 인증으로는 접근하지 못해 실제 대상 배열은 직접 확인하지 못했습니다. UK 패턴과 일치한다는 진단이며 모든 Linux가 UK라는 의미는 아닙니다. 실제 배열 출력은 사용자에게 요청했습니다.
+- 사용자가 ‘큰 문제가 아니면 넘어가도 된다’고 했으나 이 변경은 명령 실패의 원인이므로 이미 준비한 기호 매핑 수정을 정리했습니다. 이후 Pi의 SSH/8080/ping/mDNS가 응답하지 않아 업로드 및 설치 시도는 연결 단계에서 종료되었습니다. Pi 런타임/USB/boot/대상 Linux 설정은 변경하지 않았습니다. v0.3.3 로컬/GitHub 소스와 배포 파일을 준비하며, Pi 접속 복구 후 설치가 남아 있습니다.
+- 공개 README에는 대상 실제 US/UK 배열 선택 방법과 국제/dead-key/사용자 지정 배열 제한을 기록했습니다. 사용자 로컬 README는 보존했습니다.
+- 기준: Pi `/usr/share/X11/xkb/symbols/gb`, https://cgit.freedesktop.org/xkeyboard-config/tree/README.enhancing, https://man.openbsd.org/sshd.8

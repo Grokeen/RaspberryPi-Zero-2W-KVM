@@ -10,6 +10,10 @@
     "|": "Backslash", ":": "Semicolon", '"': "Quote", "~": "Backquote", "<": "Comma",
     ">": "Period", "?": "Slash"};
   [..."!@#$%^&*()"].forEach((letter, index) => { shifted[letter] = `Digit${(index + 1) % 10}`; });
+  // 2026-10-11 17:02 KST: CodexCode - standard UK XKB symbol positions.
+  const british = {'"': ["ShiftLeft", "Digit2"], "@": ["ShiftLeft", "Quote"],
+    "#": ["Backslash"], "~": ["ShiftLeft", "Backslash"], "\\": ["IntlBackslash"],
+    "|": ["ShiftLeft", "IntlBackslash"], "£": ["ShiftLeft", "Digit3"], "¬": ["ShiftLeft", "Backquote"]};
   const initials = ["r", "R", "s", "e", "E", "f", "a", "q", "Q", "t", "T", "d", "w", "W", "c", "z", "x", "v", "g"];
   const vowels = ["k", "o", "i", "O", "j", "p", "u", "P", "h", "hk", "ho", "hl", "y", "n", "nj", "np", "nl", "b", "m", "ml", "l"];
   const finals = ["", "r", "R", "rt", "s", "sw", "sg", "e", "f", "fr", "fa", "fq", "ft", "fx", "fv", "fg", "a", "q", "qt", "t", "T", "d", "w", "c", "z", "x", "v", "g"];
@@ -17,7 +21,8 @@
   [..."ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"].forEach((letter, index) => { jamo[letter] = initials[index]; });
   [..."ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅛㅜㅠㅡㅣ"].forEach((letter, index) => { jamo[letter] = ["k", "o", "i", "O", "j", "p", "u", "P", "h", "y", "n", "b", "m", "l"][index]; });
   const imeKeys = new Set(["AltRight", "ControlLeft,Space", "ShiftLeft,Space", "MetaLeft,Space"]);
-  function ascii(letter) {
+  function ascii(letter, layout = "us") {
+    if (layout === "gb" && british[letter]) return [...british[letter]];
     if (/^[a-z]$/.test(letter)) return [`Key${letter.toUpperCase()}`];
     if (/^[A-Z]$/.test(letter)) return ["ShiftLeft", `Key${letter}`];
     if (/^[0-9]$/.test(letter)) return [`Digit${letter}`];
@@ -27,7 +32,7 @@
   }
   function plan(text, layout = "us", imeKey = "AltRight") {
     if (typeof text !== "string" || !text.length) throw new Error("입력할 텍스트를 적거나 붙여 넣으세요.");
-    if (!["us", "ko"].includes(layout)) throw new Error("입력 방식을 확인하세요.");
+    if (!["us", "gb", "ko"].includes(layout)) throw new Error("입력 방식을 확인하세요.");
     if (layout === "ko" && !imeKeys.has(imeKey)) throw new Error("대상 기기의 한/영 전환키를 선택하세요.");
     const letters = [...text.replace(/\r\n?/g, "\n")];
     if (letters.length > 2000) throw new Error("한 번에 입력할 수 있는 텍스트는 2,000자까지입니다.");
@@ -39,7 +44,7 @@
       korean = next;
     }
     letters.forEach((letter, index) => {
-      const code = letter.codePointAt(0), keys = ascii(letter);
+      const code = letter.codePointAt(0), keys = ascii(letter, layout);
       if (keys) {
         switchMode(false); steps.push({codes: keys});
       } else if (layout === "ko" && code >= 0xac00 && code <= 0xd7a3) {
