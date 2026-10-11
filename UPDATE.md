@@ -182,3 +182,10 @@
 - Pi 런타임을 `/opt/zero2w-kvm-backup-clipboard-cetz9vpf`에 백업하고 설치했습니다. HTTP의 Pi HTML/JS/CSS와 로컬 파일 SHA256 일치, API 버전 0.3.1, KVM/desktop/proxy/gadget 서비스 active를 확인했습니다. USB gadget 재등록과 boot 설정 변경은 하지 않았습니다.
 - 기준: https://novnc.com/noVNC/docs/API.html#rfbclipboardpastefrom 및 https://github.com/any1/neatvnc/releases (확장 UTF-8 클립보드).
 - 범위: 일반 텍스트의 PC → Pi 전송. 이미지/파일/서식 전송과 USB HID 대상 컴퓨터 클립보드 동기화는 구현하지 않았습니다. 실제 브라우저 화면의 시각 검증은 미수행이며 UI 이벤트와 실제 클립보드 데이터 경로는 검증했습니다.
+
+## 2026-10-11 11:55 KST — CodexCode — 클립보드 GitHub 배포 및 CI 완료
+
+- 구현 커밋 `89bf308b134d0d2b99637324666584d7b8181201`을 origin/main에 배포했습니다.
+- GitHub CI `38106678525` completed/success 확인: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38106678525
+- 최종 wheel/source archive 빌드 및 배포 파일 동일성 검사 성공. 소스 패키지와 Git staging에서 실제 접속 비밀정보가 제외된 것을 검사했습니다. 사용자 로컬 README 변경은 그대로 보존했습니다.
+- Pi의 `~/zero2w-kvm-source`에도 동일한 소스/테스트/설치 스크립트/공개 문서를 반영하고 설치된 런타임과 주요 파일의 byte 일치를 확인했습니다. 기존 Pi 소스는 `~/zero2w-kvm-source-backup-clipboard-sgg603qe`에 보존했습니다.
