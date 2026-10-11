@@ -169,3 +169,16 @@
 - Python 3.10/3.11/3.13 CI와 빌드 통과. 로컬/Pi 고유 테스트 57개(Python 40 + Node 17) 통과.
 - 배포 wheel 설치 후 버전/전체 화면 웹 파일 import 검사 통과. 소스/배포 패키지 및 Git에 실제 접속 토큰이 없는 것을 검사.
 - 사용: USB 제어 중이면 Esc로 종료 → 브라우저 Ctrl+F5 → 영상이 표시되면 전체 화면 → 종료 버튼 또는 Esc. 실제 캡처 신호/브라우저 시각 검증은 캡처 입력 장치가 준비된 뒤 확인해야 함.
+
+## 2026-10-11 11:53 KST — CodexCode — PC → Pi 클립보드 텍스트 전송
+
+- 사용자 요청: PC에서 복사한 텍스트를 원격 화면에 그대로 붙여 넣기. 최근 Pi 원격 제어 문맥을 기준으로 `/pi` 화면에 구현했습니다.
+- `static/pi.html`, `pi.js`, `style.css`: 여러 줄 텍스트 입력 칸, Pi 클립보드 전송, 일반 앱 Ctrl+V 및 터미널 Ctrl+Shift+V 버튼 추가. 한글/이모지/공백을 보존하며 UTF-8 기준 256 KiB 제한을 적용했습니다. HTTP에서도 브라우저 입력 칸에 Ctrl+V로 붙여 넣을 수 있습니다.
+- 연결 끊김/재연결/보기 전용/텍스트 수정 시 붙여넣기 준비 상태를 초기화하고 로그아웃 시 입력 칸을 비웁니다. 텍스트 전송만으로 실제 앱에 키 입력을 보내지는 않습니다.
+- `tests/test_browser.js`: 문자/공백/줄바꿈 보존, 앱별 단축키와 modifier 해제, UTF-8 용량 제한, 보기 전용/내용 변경/재연결/로그아웃 경계 검증 5개 추가.
+- `scripts/setup_vnc.sh`: WayVNC와 NeatVNC도 갱신하도록 변경. 실제 Pi의 개발 버전 NeatVNC 0.9-dev는 확장 클립보드 협상을 제공하지 않았습니다. WayVNC 0.9.1 및 NeatVNC 0.9.5 패키지로 갱신하고 Pi desktop 서비스만 재시작했습니다. 실제 Wayland 클립보드 검증용 `wl-clipboard`도 설치했습니다.
+- 버전 파일/두 화면 footer를 0.3.1로 변경. 사용자 로컬 README를 보존하고 별도 공개 문서 복사본에 사용법을 추가하여 wheel/source archive를 빌드했습니다.
+- 검증: Windows Python 40개, Pi Python 40개 + Node 22개 통과. compileall, node --check, bash -n 완료. 실제 인증된 VNC에서 UTF-8 확장 클립보드 협상을 확인하고 한글/이모지/탭/선행 공백/줄바꿈이 Wayland 클립보드까지 그대로 전달됨을 검증했습니다. 검사 후 기존 일반 텍스트 클립보드를 복원했습니다.
+- Pi 런타임을 `/opt/zero2w-kvm-backup-clipboard-cetz9vpf`에 백업하고 설치했습니다. HTTP의 Pi HTML/JS/CSS와 로컬 파일 SHA256 일치, API 버전 0.3.1, KVM/desktop/proxy/gadget 서비스 active를 확인했습니다. USB gadget 재등록과 boot 설정 변경은 하지 않았습니다.
+- 기준: https://novnc.com/noVNC/docs/API.html#rfbclipboardpastefrom 및 https://github.com/any1/neatvnc/releases (확장 UTF-8 클립보드).
+- 범위: 일반 텍스트의 PC → Pi 전송. 이미지/파일/서식 전송과 USB HID 대상 컴퓨터 클립보드 동기화는 구현하지 않았습니다. 실제 브라우저 화면의 시각 검증은 미수행이며 UI 이벤트와 실제 클립보드 데이터 경로는 검증했습니다.

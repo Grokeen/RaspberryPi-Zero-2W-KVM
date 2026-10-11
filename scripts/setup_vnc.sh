@@ -24,7 +24,8 @@ if ! command -v wlr-randr >/dev/null; then
   echo "This browser desktop service requires a wlroots Wayland desktop." >&2
   exit 1
 fi
-env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends novnc websockify
+# 2026-10-11 11:43 KST: stable VNC packages provide extended UTF-8 clipboard support.
+env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends wayvnc libneatvnc0 novnc websockify
 getent group kvm >/dev/null
 install -d -m 750 -o root -g kvm /etc/zero2w-kvm
 python3 - "$SOURCE_ROOT" "$DESKTOP_ACCOUNT" "$DESKTOP_ID" <<'PY'

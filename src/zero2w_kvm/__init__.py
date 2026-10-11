@@ -4,4 +4,5 @@
 # 2026-10-10 00:29 KST: CodexCode - USB connection guidance and VNC boot recovery.
 # 2026-10-10 01:03 KST: CodexCode - preserve Shift during Korean IME input.
 # 2026-10-10 20:23 KST: CodexCode - capture video fullscreen controls.
-__version__ = "0.3.0"
+# 2026-10-11 11:43 KST: CodexCode - Pi desktop clipboard transfer and paste shortcuts.
+__version__ = "0.3.1"

@@ -3,6 +3,9 @@
 const el = id => document.getElementById(id);
 let rfb = null, connected = false, requested = false, authenticated = false;
 let attempt = 0;
+// 2026-10-11 11:43 KST: CodexCode - explicit text clipboard transfer and Pi paste shortcuts.
+let clipboardSent = false;
+const clipboardLimit = 256 * 1024;
 function message(value) { el("pi-notice").textContent = value; }
 function state(label, ok = false) {
   el("pi-connection").textContent = label;
@@ -16,6 +19,7 @@ async function api(path, data) {
   if (!response.ok) {
     if (response.status === 401) {
       authenticated = false; disconnect();
+      el("pi-clipboard-text").value = "";
       el("pi-login").hidden = false; el("pi-console").hidden = true; state("로그인 필요");
     }
     throw new Error(result.error || `HTTP ${response.status}`);
@@ -26,11 +30,45 @@ function controls() {
   el("pi-connect").disabled = requested || connected;
   el("pi-disconnect").disabled = !requested && !connected;
   el("pi-placeholder").hidden = requested || connected;
+  const editable = connected && rfb && !rfb.viewOnly;
+  el("pi-clipboard-text").disabled = !editable;
+  el("pi-clipboard-send").disabled = !editable || !el("pi-clipboard-text").value;
+  el("pi-paste").disabled = !editable || !clipboardSent;
+  el("pi-terminal-paste").disabled = !editable || !clipboardSent;
+}
+function sendClipboard() {
+  if (!connected || !rfb) { message("먼저 Pi 화면을 연결하세요."); return; }
+  if (rfb.viewOnly) { message("‘화면 보기만’을 해제하면 클립보드를 전송할 수 있습니다."); return; }
+  const text = el("pi-clipboard-text").value;
+  if (!text) { message("전송할 텍스트를 붙여 넣으세요."); return; }
+  if (new TextEncoder().encode(text).byteLength > clipboardLimit) {
+    message("한 번에 전송할 수 있는 텍스트는 256 KiB까지입니다."); return;
+  }
+  try {
+    rfb.clipboardPasteFrom(text);
+    clipboardSent = true; controls();
+    message("텍스트를 전송했습니다. Pi 화면의 입력할 곳을 클릭한 뒤 ‘붙여넣기’를 누르세요. 터미널에서는 ‘터미널 붙여넣기’를 사용하세요.");
+  } catch (error) { clipboardSent = false; controls(); message(error.message); }
+}
+function pasteClipboard(terminal = false) {
+  if (!connected || !rfb || rfb.viewOnly || !clipboardSent) return;
+  const current = rfb;
+  try {
+    current.sendKey(0xffe3, "ControlLeft", true);
+    if (terminal) current.sendKey(0xffe1, "ShiftLeft", true);
+    current.sendKey(0x0076, "KeyV");
+  } catch (error) { message(error.message); }
+  finally {
+    if (terminal) current.sendKey(0xffe1, "ShiftLeft", false);
+    current.sendKey(0xffe3, "ControlLeft", false);
+  }
+  current.focus();
 }
 function disconnect() {
   attempt++;
   const current = rfb;
   rfb = null; requested = connected = false;
+  clipboardSent = false;
   if (current) current.disconnect();
   controls();
   if (authenticated) state("연결 종료");
@@ -72,7 +110,7 @@ async function connect() {
     });
     current.addEventListener("disconnect", event => {
       if (rfb !== current) return;
-      rfb = null; requested = connected = false; controls(); state("연결 종료");
+      rfb = null; requested = connected = clipboardSent = false; controls(); state("연결 종료");
       if (!event.detail.clean) message("화면 연결이 끊겼습니다. 다시 연결해 주세요.");
     });
     current.addEventListener("securityfailure", () => message("Pi VNC 인증에 실패했습니다. VNC 설정을 확인하세요."));
@@ -86,7 +124,14 @@ el("pi-login-form").addEventListener("submit", async event => {
 });
 el("pi-connect").addEventListener("click", connect);
 el("pi-disconnect").addEventListener("click", disconnect);
-el("pi-view-only").addEventListener("change", () => { if (rfb) rfb.viewOnly = el("pi-view-only").checked; });
+el("pi-view-only").addEventListener("change", () => {
+  if (rfb) rfb.viewOnly = el("pi-view-only").checked;
+  clipboardSent = false; controls();
+});
+el("pi-clipboard-text").addEventListener("input", () => { clipboardSent = false; controls(); });
+el("pi-clipboard-send").addEventListener("click", sendClipboard);
+el("pi-paste").addEventListener("click", () => pasteClipboard());
+el("pi-terminal-paste").addEventListener("click", () => pasteClipboard(true));
 el("pi-keyboard").addEventListener("click", () => rfb?.focus());
 el("pi-escape").addEventListener("click", () => { if (connected && !rfb.viewOnly) { rfb.sendKey(0xff1b, "Escape"); rfb.focus(); } });
 el("pi-tab").addEventListener("click", () => { if (connected && !rfb.viewOnly) { rfb.sendKey(0xff09, "Tab"); rfb.focus(); } });
@@ -96,9 +141,11 @@ el("pi-fullscreen").addEventListener("click", async () => {
 });
 el("pi-logout").addEventListener("click", async () => {
   disconnect();
+  el("pi-clipboard-text").value = "";
   try { await api("/api/logout", {}); } catch (error) { message(error.message); }
   authenticated = false; el("pi-login").hidden = false; el("pi-console").hidden = true; state("로그인 필요");
 });
 window.addEventListener("pagehide", disconnect);
+controls();
 refresh();
 setInterval(refresh, 5000);

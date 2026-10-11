@@ -240,7 +240,7 @@ test("browser rejection and unsupported fullscreen leave the video inline", asyn
 // 2026-10-09 23:42 KST: CodexCode - isolate Pi desktop controls and cancel stale connections.
 function piFixture(loadOverride) {
   class Element {
-    constructor() { this.listeners = {}; this.checked = false; this.classList = {toggle() {}}; }
+    constructor() { this.listeners = {}; this.checked = false; this.value = ""; this.classList = {toggle() {}}; }
     addEventListener(type, callback) { this.listeners[type] = callback; }
     async fire(type, event = {}) { await this.listeners[type]?.(event); }
   }
@@ -250,15 +250,16 @@ function piFixture(loadOverride) {
     return elements.get(id);
   }};
   class FakeRFB extends Element {
-    constructor(target, url, options) { super(); this.url = url; this.options = options; this.keys = []; instances.push(this); }
+    constructor(target, url, options) { super(); this.url = url; this.options = options; this.keys = []; this.clipboard = []; instances.push(this); }
     focus() { this.focused = true; }
     disconnect() { this.disconnected = true; }
     sendKey(...values) { this.keys.push(values); }
+    clipboardPasteFrom(text) { this.clipboard.push(text); }
     sendCredentials() {}
   }
   const script = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/pi.js"), "utf8")
     .replace('await import("/novnc/core/rfb.js")', 'await loadRfb()');
-  const context = vm.createContext({document, window: new Element(), AbortSignal, Promise,
+  const context = vm.createContext({document, window: new Element(), AbortSignal, Promise, TextEncoder,
     location: {protocol: "https:", host: "pi.example:8443"}, setInterval() {},
     loadRfb: loadOverride || (async () => ({default: FakeRFB})),
     fetch: async (url, options) => {
@@ -309,4 +310,87 @@ test("cancelling a pending Pi library load never creates a late connection", asy
   finish({default: f.FakeRFB});
   await connecting;
   assert.equal(f.instances.length, 0);
+});
+
+// 2026-10-11 11:43 KST: CodexCode - clipboard formatting, UTF-8 limits and connection boundaries.
+test("Pi clipboard preserves Korean, emoji, tabs and surrounding whitespace without sending input", async () => {
+  const f = piFixture();
+  assert.equal(f.elements.get("pi-clipboard-send").disabled, true);
+  await f.run("connect()");
+  const rfb = f.instances[0];
+  await rfb.fire("connect");
+  const text = "  첫 줄\n\t둘째 줄 😀\n";
+  f.elements.get("pi-clipboard-text").value = text;
+  await f.elements.get("pi-clipboard-text").fire("input");
+  await f.elements.get("pi-clipboard-send").fire("click");
+  assert.deepEqual(rfb.clipboard, [text]);
+  assert.deepEqual(rfb.keys, []);
+  assert.equal(f.elements.get("pi-paste").disabled, false);
+  assert.equal(f.requests.includes("/api/input"), false);
+});
+
+test("Pi paste buttons send app-specific shortcuts and release every modifier", async () => {
+  const f = piFixture();
+  await f.run("connect()");
+  const rfb = f.instances[0];
+  await rfb.fire("connect");
+  f.elements.get("pi-clipboard-text").value = "text";
+  await f.elements.get("pi-clipboard-send").fire("click");
+  await f.elements.get("pi-paste").fire("click");
+  await f.elements.get("pi-terminal-paste").fire("click");
+  assert.deepEqual(rfb.keys, [
+    [0xffe3, "ControlLeft", true], [0x0076, "KeyV"], [0xffe3, "ControlLeft", false],
+    [0xffe3, "ControlLeft", true], [0xffe1, "ShiftLeft", true], [0x0076, "KeyV"],
+    [0xffe1, "ShiftLeft", false], [0xffe3, "ControlLeft", false]
+  ]);
+});
+
+test("Pi clipboard rejects oversized UTF-8 and empty content but accepts whitespace", async () => {
+  const f = piFixture();
+  await f.run("connect()");
+  const rfb = f.instances[0];
+  await rfb.fire("connect");
+  await f.elements.get("pi-clipboard-send").fire("click");
+  f.elements.get("pi-clipboard-text").value = "한".repeat(90000);
+  await f.elements.get("pi-clipboard-send").fire("click");
+  assert.deepEqual(rfb.clipboard, []);
+  assert.match(f.elements.get("pi-notice").textContent, /256 KiB/);
+  f.elements.get("pi-clipboard-text").value = " \n\t ";
+  await f.elements.get("pi-clipboard-send").fire("click");
+  assert.deepEqual(rfb.clipboard, [" \n\t "]);
+});
+
+test("Pi view-only and changed text invalidate paste until content is sent again", async () => {
+  const f = piFixture();
+  await f.run("connect()");
+  const rfb = f.instances[0];
+  await rfb.fire("connect");
+  f.elements.get("pi-clipboard-text").value = "text";
+  await f.elements.get("pi-clipboard-send").fire("click");
+  await f.elements.get("pi-clipboard-text").fire("input");
+  await f.elements.get("pi-paste").fire("click");
+  assert.deepEqual(rfb.keys, []);
+  f.elements.get("pi-view-only").checked = true;
+  await f.elements.get("pi-view-only").fire("change");
+  await f.elements.get("pi-clipboard-send").fire("click");
+  await f.elements.get("pi-terminal-paste").fire("click");
+  assert.deepEqual(rfb.clipboard, ["text"]);
+  assert.deepEqual(rfb.keys, []);
+  assert.equal(f.elements.get("pi-clipboard-text").disabled, true);
+});
+
+test("Pi reconnect requires a new clipboard transfer and logout clears the local text", async () => {
+  const f = piFixture();
+  await f.run("connect()");
+  await f.instances[0].fire("connect");
+  f.elements.get("pi-clipboard-text").value = "private text";
+  await f.elements.get("pi-clipboard-send").fire("click");
+  await f.run("connect()");
+  const current = f.instances[1];
+  await current.fire("connect");
+  await f.elements.get("pi-paste").fire("click");
+  assert.deepEqual(current.keys, []);
+  assert.equal(f.elements.get("pi-paste").disabled, true);
+  await f.elements.get("pi-logout").fire("click");
+  assert.equal(f.elements.get("pi-clipboard-text").value, "");
 });

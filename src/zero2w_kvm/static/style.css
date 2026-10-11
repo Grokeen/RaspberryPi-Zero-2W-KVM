@@ -57,3 +57,10 @@ footer { padding-top: 0; color: #7d90aa; font-size: 12px; }
 #screen:fullscreen #fullscreen-controls { display: flex; }
 #fullscreen-controls span { font-size: 12px; color: #c5d5e8; }
 @media (max-width: 600px) { #fullscreen-controls span { display: none; } }
+/* 2026-10-11 11:43 KST: CodexCode - readable multiline clipboard editor on the Pi desktop. */
+.pi-clipboard { margin-top: 20px; }
+.pi-clipboard label { margin-top: 0; }
+.pi-clipboard textarea { width: 100%; min-height: 110px; resize: vertical; padding: 13px; border: 1px solid #415371; border-radius: 8px; background: #0b1422; color: #e6edf5; font: inherit; }
+.pi-clipboard textarea:focus-visible { outline: 2px solid #75dfbb; outline-offset: 3px; }
+.pi-clipboard .toolbar { margin-top: 12px; margin-bottom: 0; }
+.pi-clipboard .hint { margin-bottom: 0; }
