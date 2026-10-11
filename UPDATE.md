@@ -221,3 +221,8 @@
 - 사용자가 ‘큰 문제가 아니면 넘어가도 된다’고 했으나 이 변경은 명령 실패의 원인이므로 이미 준비한 기호 매핑 수정을 정리했습니다. 이후 Pi의 SSH/8080/ping/mDNS가 응답하지 않아 업로드 및 설치 시도는 연결 단계에서 종료되었습니다. Pi 런타임/USB/boot/대상 Linux 설정은 변경하지 않았습니다. v0.3.3 로컬/GitHub 소스와 배포 파일을 준비하며, Pi 접속 복구 후 설치가 남아 있습니다.
 - 공개 README에는 대상 실제 US/UK 배열 선택 방법과 국제/dead-key/사용자 지정 배열 제한을 기록했습니다. 사용자 로컬 README는 보존했습니다.
 - 기준: Pi `/usr/share/X11/xkb/symbols/gb`, https://cgit.freedesktop.org/xkeyboard-config/tree/README.enhancing, https://man.openbsd.org/sshd.8
+
+## 2026-10-11 17:18 KST — CodexCode — UK 배열 수정 소스/CI 완료, Pi 설치 대기
+
+- 수정 커밋 `60c3cf67a56b1df98f437b59f3f14fb7cf6714f2`을 origin/main에 배포했습니다. CI `38124229923` completed/success 확인: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38124229923
+- v0.3.3 wheel/source archive와 공개 문서 준비 완료. 마지막 확인에서도 Pi SSH가 응답하지 않아 실제 Pi 설치와 Pi 편집용 소스 반영은 남아 있습니다. Pi에 적용 완료했다고 보고하지 않습니다.
