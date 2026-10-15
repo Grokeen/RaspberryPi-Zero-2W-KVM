@@ -311,3 +311,9 @@
 - 사용자 요청으로 실제 README.md를 프로젝트 설명·연결 구성도·설치·영상·Windows 단축키·한/영 설정·대상 PC 도우미 실행·텍스트 입력·Pi 원격 화면·문제 해결 문서로 작성했습니다. 기존 로컬 README는 비공개 작업 폴더에 보관했고 개인 화면 이미지 파일은 변경하거나 공개 Git에 추가하지 않았습니다.
 - 기준: https://learn.microsoft.com/en-us/globalization/input/korean-ime (오른쪽 Alt 한/영 전환). 실제 대상의 한/영 동작과 대상 → 현재 PC 클립보드 왕복은 새 설정/도우미 실행 후 확인해야 합니다. Pi 배포/GitHub 결과는 후속 기록에 추가합니다.
 - Pi v0.6.2 설치 후 Python 59개/Node 67개가 모두 통과했고 web/gadget active, USB configured 및 로컬·Pi 소스·설치본 18개 파일 일치를 확인했습니다. 실제 localhost 자산/인증/도우미 ZIP의 paired 정보·STA 실행기/주 토큰 미포함과 기존 Host·Origin 차단도 통과했습니다. USB 장치를 재연결하지 않았습니다.
+
+## 2026-10-16 02:08 KST — CodexCode — v0.6.2 및 README GitHub 반영
+
+- 구현 커밋 `af3d510a6cf45a3d1093baf2204ff94325074a12`과 README를 PR #3으로 게시해 main에 병합했습니다. 병합 커밋은 `d80d9b4578df19affd7c42cfa7d5d38cf90a7d77`입니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/pull/3
+- 브랜치 CI `38774657754`, PR CI `38774665596`에서 Python 3.10/3.11/3.13 검사와 Node 테스트/빌드가 모두 성공했습니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38774665596
+- 최종 wheel/source archive와 Pi 소스에 공개 README 및 검증 기록을 반영했습니다. 실제 대상 Windows의 한/영 전환과 클립보드 왕복은 사용자 확인을 요청한 상태이며, 도우미는 새 실행 묶음으로 대상 PC에서 최초 실행해야 합니다. 설치나 실사용 결과를 확인한 것으로 기록하지 않습니다.
