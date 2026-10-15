@@ -13,6 +13,8 @@ if [[ "$MODEL" != *"Raspberry Pi Zero 2"* ]]; then
 fi
 # Compile and validate boot configuration before replacing an installed service.
 python3 -m compileall -q "$SOURCE_ROOT/src"
+# 2026-10-16 03:22 KST: reject incomplete source before changing the Pi; new installs include every Windows helper asset.
+PYTHONPATH="$SOURCE_ROOT/src" python3 -c 'from zero2w_kvm.clipboard import windows_helper; windows_helper("http://127.0.0.1:8080", "install-preflight-only", bundle=True)'
 python3 "$SOURCE_ROOT/scripts/configure_boot.py"
 getent group kvm >/dev/null || groupadd --system kvm
 id zero2w-kvm >/dev/null 2>&1 || useradd --system --gid kvm --groups video --home-dir /nonexistent --shell /usr/sbin/nologin zero2w-kvm

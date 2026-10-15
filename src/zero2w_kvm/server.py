@@ -3,7 +3,6 @@ import argparse
 import errno
 from collections import defaultdict
 import hmac
-import io
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -15,13 +14,12 @@ import secrets
 import signal
 import threading
 import time
-import zipfile
 from urllib.parse import parse_qs, unquote, urlsplit
 from . import __version__
 from .hid import Controller, ControlBusyError, USBDisconnectedError, KEY_CODES
 from .video import Video
 from .desktop import PiDesktop, websocket_key
-from .clipboard import ClipboardBridge
+from .clipboard import ClipboardBridge, windows_helper
 
 LOG = logging.getLogger("zero2w-kvm")
 STATIC = Path(__file__).with_name("static")
@@ -185,10 +183,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         # 2026-10-16 00:25 KST: the scoped helper token cannot authenticate as a console user.
-        if path == "/api/clipboard/agent/poll":
+        if path in ("/api/clipboard/agent/poll", "/api/clipboard/agent/health"):
             if not self._clipboard_agent_ok():
                 self._json(401, {"error": "Clipboard helper authentication required"}); return
-            self._json(200, {"job": self.server.app.clipboard.poll()}); return
+            # 2026-10-16 03:22 KST: diagnostics must neither dispatch a copy job nor mark a helper online.
+            self._json(200, {"ok": True, "version": __version__} if path.endswith("/health") else {"job": self.server.app.clipboard.poll()}); return
         # 2026-10-16 00:15 KST: serve the exact HID physical-code allowlist to the browser.
         if path == "/keyboard-map.js":
             body = ("globalThis.KVMKeyMap = Object.freeze(" + json.dumps(KEY_CODES) + ");\n").encode()
@@ -227,18 +226,10 @@ class Handler(BaseHTTPRequestHandler):
                 if ":" in host:
                     host = f"[{host}]"
                 address = f"http://{host}:{self.server.server_port}"
-                body = (STATIC / "windows-clipboard-helper.ps1").read_text(encoding="utf-8")
-                body = body.replace("__KVM_SERVER__", address).replace("__KVM_AGENT_TOKEN__", self.server.app.clipboard.agent_token).encode("utf-8-sig")
-                mime = "application/octet-stream"
-                # 2026-10-16 01:55 KST: pair an interactive STA launcher with the helper for the USB target.
-                if path.endswith(".zip"):
-                    bundle = io.BytesIO()
-                    launcher = '@echo off\r\npowershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0KVM-Windows-Clipboard.ps1"\r\nif errorlevel 1 pause\r\n'
-                    with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-                        archive.writestr("KVM-Windows-Clipboard.ps1", body)
-                        archive.writestr("Start-KVM-Clipboard.cmd", launcher.encode("ascii"))
-                        archive.writestr("README.txt", "조종당하는 Windows에서 압축을 풀고 Start-KVM-Clipboard.cmd를 실행하세요.\r\nPi USB 키보드가 연결된 PC에서만 실행됩니다. Connected to KVM 안내 후 창을 최소화하세요.\r\n창을 닫으면 종료됩니다. 이 파일에는 도우미 전용 인증 정보가 포함되어 있습니다.\r\n".encode("utf-8-sig"))
-                    body, mime = bundle.getvalue(), "application/zip"
+                # 2026-10-16 03:22 KST: use the same bundle builder checked by the Pi installer.
+                zipped = path.endswith(".zip")
+                body = windows_helper(address, self.server.app.clipboard.agent_token, bundle=zipped)
+                mime = "application/zip" if zipped else "application/octet-stream"
                 self._headers(200, mime, len(body))
                 self.wfile.write(body)
             elif path == "/api/clipboard/result":

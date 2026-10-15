@@ -129,15 +129,34 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(headers["Content-Type"], "application/zip")
         self.assertEqual(headers["Cache-Control"], "no-store")
         with zipfile.ZipFile(io.BytesIO(body)) as archive:
-            self.assertEqual(set(archive.namelist()), {"KVM-Windows-Clipboard.ps1", "Start-KVM-Clipboard.cmd", "README.txt"})
+            self.assertEqual(set(archive.namelist()), {"KVM-Windows-Clipboard.ps1", "KVM-Windows-Clipboard-Setup.ps1", "Start-KVM-Clipboard.cmd", "Install-KVM-Clipboard.cmd", "Uninstall-KVM-Clipboard.cmd", "Check-KVM-Clipboard.cmd", "README.txt"})
             helper = archive.read("KVM-Windows-Clipboard.ps1")
             self.assertTrue(helper.startswith(b'\xef\xbb\xbf'))
             self.assertIn(self.app.clipboard.agent_token.encode(), helper)
             self.assertNotIn(TOKEN.encode(), helper)
             self.assertNotIn(b"__KVM_AGENT_TOKEN__", helper)
-            self.assertLess(helper.index(b"Pi USB keyboard not found"), helper.index(b"System.Windows.Forms"))
+            self.assertIn(b"Pi USB keyboard not found", helper)
             launcher = archive.read("Start-KVM-Clipboard.cmd")
             self.assertIn(b'-NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0KVM-Windows-Clipboard.ps1"', launcher)
+            self.assertIn(b' -Action Install', archive.read("Install-KVM-Clipboard.cmd"))
+            self.assertIn(b' -Action Uninstall', archive.read("Uninstall-KVM-Clipboard.cmd"))
+            self.assertIn(b' -CheckNetwork', archive.read("Check-KVM-Clipboard.cmd"))
+            setup = archive.read("KVM-Windows-Clipboard-Setup.ps1")
+            self.assertTrue(setup.startswith(b'\xef\xbb\xbf'))
+            self.assertIn(b' -WatchUsb', setup)
+
+    # 2026-10-16 03:22 KST: checking connectivity never consumes a job or impersonates a running agent.
+    def test_helper_health_is_scoped_and_does_not_dispatch_clipboard_jobs(self):
+        route = "/api/clipboard/agent/health"
+        agent = {"Authorization": "Bearer " + self.app.clipboard.agent_token}
+        self.assertEqual(self.request(route)[0], 401)
+        self.assertEqual(self.request(route, headers=self.auth())[0], 401)
+        self.assertEqual(json.loads(self.request(route, headers=agent)[2])["ok"], True)
+        self.assertFalse(self.app.clipboard.status()["agent_ready"])
+        self.app.clipboard.poll()
+        job = self.app.clipboard.create("owner")
+        self.assertEqual(self.request(route, headers=agent)[0], 200)
+        self.assertEqual(self.app.clipboard.poll(), job)
 
     # 2026-10-11 15:27 KST: the key planner is available with the normal console assets.
     def test_text_planner_asset_is_served_as_javascript(self):

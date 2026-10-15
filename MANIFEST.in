@@ -4,6 +4,6 @@ recursive-include scripts *.py *.sh *.ps1
 include OWERORDER.md
 include Open-KVM-PC.cmd
 recursive-include systemd *.service *.rules *.example
-recursive-include tests *.py *.js
+recursive-include tests *.py *.js *.ps1
 recursive-include src/zero2w_kvm/static *
 global-exclude *.pyc
