@@ -148,3 +148,5 @@ footer { padding-top: 0; color: #7d90aa; font-size: 12px; }
   .kvm-page > footer { padding: 5px 14px; font-size: 10px; }
   .settings-section { padding: 16px; }
 }
+/* 2026-10-16 01:00 KST: Windows shortcut modifier controls in the session panel. */
+.shortcut-modifiers{display:flex;flex-wrap:wrap;gap:.6rem;margin:.6rem 0}.shortcut-modifiers label{display:flex;align-items:center;gap:.3rem}.shortcut-modifiers input{width:auto;margin:0}

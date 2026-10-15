@@ -1,6 +1,8 @@
 """2026-10-09 22:35 KST: CodexCode - real HTTP auth, CSRF and input routing tests."""
 import http.client
 import json
+import re
+from pathlib import Path
 import threading
 import unittest
 from zero2w_kvm.hid import Controller
@@ -52,6 +54,34 @@ class ServerTests(unittest.TestCase):
         mapping = json.loads(body.decode().split("Object.freeze(", 1)[1].rsplit(");", 1)[0])
         self.assertEqual(mapping, KEY_CODES)
         self.assertEqual(mapping["Lang1"], 0x90)
+
+    # 2026-10-16 01:00 KST: all offered Windows shortcuts reach the HID writer and release.
+    def test_windows_shortcut_catalog_routes_to_hid_and_reserved_chords_have_correct_bytes(self):
+        from zero2w_kvm.hid import KEY_CODES
+        html = (Path(__file__).parents[1] / "src/zero2w_kvm/static/index.html").read_text(encoding="utf-8")
+        select = re.search(r'<select id="windows-shortcut"[\s\S]*?</select>', html).group()
+        presets = [value for value in re.findall(r'<option value="([^"]+)"', select) if value != "custom"]
+        self.assertGreaterEqual(len(presets), 55)
+        expected = {"AltLeft,Tab": bytes([4, 0, 0x2B, 0, 0, 0, 0, 0]),
+                    "AltLeft,ShiftLeft,Tab": bytes([6, 0, 0x2B, 0, 0, 0, 0, 0]),
+                    "ControlLeft,AltLeft,Delete": bytes([5, 0, 0x4C, 0, 0, 0, 0, 0]),
+                    "ControlLeft,ShiftLeft,Escape": bytes([3, 0, 0x29, 0, 0, 0, 0, 0]),
+                    "MetaLeft,Tab": bytes([8, 0, 0x2B, 0, 0, 0, 0, 0]),
+                    "MetaLeft,KeyR": bytes([8, 0, 0x15, 0, 0, 0, 0, 0]),
+                    "MetaLeft,ShiftLeft,KeyS": bytes([10, 0, 0x16, 0, 0, 0, 0, 0]),
+                    "MetaLeft,ControlLeft,ArrowRight": bytes([9, 0, 0x4F, 0, 0, 0, 0, 0])}
+        for preset in presets:
+            with self.subTest(preset=preset):
+                codes = preset.split(",")
+                self.assertTrue(all(code in KEY_CODES for code in codes))
+                self.reports.clear()
+                status, _, _ = self.request("/api/input", {"type": "tap", "codes": codes}, self.auth())
+                self.assertEqual(status, 200)
+                self.assertEqual(len(self.reports), 2)
+                self.assertEqual(len(self.reports[0][1]), 8)
+                self.assertEqual(self.reports[-1][1], bytes(8))
+                if preset in expected:
+                    self.assertEqual(self.reports[0][1], expected[preset])
 
     def test_clipboard_helper_token_cannot_control_usb_or_read_console(self):
         agent = {"Authorization": "Bearer " + self.app.clipboard.agent_token}

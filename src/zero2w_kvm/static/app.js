@@ -20,16 +20,25 @@ const known = new Set(Object.keys(KVMKeyMap));
 const momentaryKeys = new Set(["Lang1", "Lang2", "PrintScreen", "Pause"]);
 const pulsedKeys = new Set();
 let keyboardLockGeneration = 0, keyboardLocked = false, keyboardLockQueue = Promise.resolve();
+// 2026-10-16 01:00 KST: enter browser fullscreen before capturing Windows system shortcuts.
+let captureStarting = false, pointerCaptureGeneration = null, shortcutSending = false;
 let clipboardGeneration = 0, clipboardCopyTask = Promise.resolve();
 const releaseHint = "제어 해제·입력 중지: Ctrl+Alt+Shift를 함께 누르세요. Esc는 대상 컴퓨터에 전달합니다.";
 function releaseKeyboardLock() {
   keyboardLockGeneration++;
   keyboardLocked = false;
   try { navigator.keyboard?.unlock?.(); } catch {}
+  $("keyboard-status").textContent = "제어 대기 · 시작하면 전체 화면과 키보드 잠금을 요청합니다.";
 }
 function requestKeyboardLock() {
-  if (!capturing || !isVideoFullscreen() || typeof navigator.keyboard?.lock !== "function") return Promise.resolve();
+  if (!capturing) return Promise.resolve();
+  if (keyboardLocked && isVideoFullscreen()) return Promise.resolve();
+  if (!isVideoFullscreen() || typeof navigator.keyboard?.lock !== "function") {
+    $("keyboard-status").textContent = "일반 키 입력만 제어 중 · 시스템 단축키는 아래 ‘대상에 직접 전송’을 사용하세요. 전체 화면과 키보드 잠금을 지원하는 Chrome/Edge가 필요합니다.";
+    return Promise.resolve();
+  }
   const generation = keyboardLockGeneration;
+  $("keyboard-status").textContent = "키보드 잠금 요청 중 · 브라우저에 권한 요청이 나오면 허용하세요.";
   keyboardLockQueue = keyboardLockQueue.then(async () => {
     if (generation !== keyboardLockGeneration || !capturing || !isVideoFullscreen()) return;
     try {
@@ -38,9 +47,9 @@ function requestKeyboardLock() {
         navigator.keyboard.unlock(); return;
       }
       keyboardLocked = true;
-      $("keyboard-help").textContent = `${releaseHint} 키보드 잠금이 적용되었습니다. Esc를 길게 누르는 브라우저 비상 해제는 유지됩니다.`;
+      $("keyboard-status").textContent = "키보드 잠금 적용 · Windows가 허용하는 시스템 단축키를 전달합니다. Ctrl+Alt+Del·Win+L 등 이 PC에서 가로채는 키는 아래 직접 전송을 사용하세요.";
     } catch {
-      $("keyboard-help").textContent = `${releaseHint} Esc·시스템 단축키를 보내려면 전체 화면에서 브라우저의 키보드 잠금을 허용하세요.`;
+      if (generation === keyboardLockGeneration && capturing) $("keyboard-status").textContent = "키보드 잠금이 허용되지 않았습니다. 브라우저의 키보드 잠금 권한을 허용하고 제어를 다시 시작하거나 아래 직접 전송을 사용하세요.";
     }
   });
   return keyboardLockQueue;
@@ -289,7 +298,7 @@ function isVideoFullscreen() { return document.fullscreenElement === $("viewer")
 function fullscreenUI() {
   const active = isVideoFullscreen();
   const supported = typeof $("viewer").requestFullscreen === "function" && document.fullscreenEnabled !== false;
-  $("video-fullscreen").disabled = fullscreenChanging || (!active && (!authenticated || !supported));
+  $("video-fullscreen").disabled = fullscreenChanging || captureStarting || (!active && (!authenticated || !supported));
   $("video-fullscreen").textContent = active ? "전체 화면 종료" : "전체 화면";
   $("video-fullscreen").setAttribute("aria-pressed", String(active));
   $("video-fullscreen").title = !supported ? "이 브라우저는 전체 화면을 지원하지 않습니다." : !authenticated ? "콘솔 로그인 후 사용할 수 있습니다." : "영상 및 설정 전체 화면 전환";
@@ -303,7 +312,7 @@ async function exitVideoFullscreen() {
   finally { fullscreenUI(); }
 }
 $("video-fullscreen").addEventListener("click", async () => {
-  if (fullscreenChanging) return;
+  if (fullscreenChanging || captureStarting) return;
   if (isVideoFullscreen()) { await exitVideoFullscreen(); return; }
   if (!authenticated) return;
   stopCapture();
@@ -333,6 +342,7 @@ function usbControls() {
   $("release").disabled = !usbConnected;
   document.querySelectorAll("[data-keys]").forEach(button => { button.disabled = blocked; });
   for (const id of ["type-text", "text-layout", "text-send"]) $(id).disabled = blocked;
+  for (const id of ["windows-shortcut", "shortcut-send", "shortcut-key", "shortcut-ctrl", "shortcut-alt", "shortcut-shift", "shortcut-win"]) $(id).disabled = blocked || shortcutSending;
   $("text-ime").disabled = blocked || $("text-layout").value !== "ko";
   $("text-stop").disabled = !typing || typingCancelled;
   $("screen").setAttribute("aria-disabled", String(!usbConnected));
@@ -424,16 +434,18 @@ $("text-layout").addEventListener("change", usbControls);
 $("text-send").addEventListener("click", typeText);
 $("text-stop").addEventListener("click", cancelTextEntry);
 function captureUI() {
-  $("capture").textContent = capturing ? "키보드 제어 종료" : "키보드 제어 시작";
+  $("capture").textContent = capturing ? "키보드 제어 종료" : captureStarting ? "제어 시작 취소" : "키보드 제어 시작";
   $("capture-label").hidden = !capturing;
 }
 function stopCapture() {
   const wasCapturing = capturing;
   capturing = keyboardOnly = false;
+  captureStarting = false; pointerCaptureGeneration = null;
   keys.clear(); pulsedKeys.clear(); dx = dy = wheel = buttons = 0; mouseDirty = false;
   releaseKeyboardLock();
   if (document.pointerLockElement) document.exitPointerLock();
   captureUI();
+  fullscreenUI();
   if (wasCapturing && authenticated) input({type: "release"});
 }
 $("login-form").addEventListener("submit", async event => {
@@ -448,25 +460,42 @@ $("login-form").addEventListener("submit", async event => {
   } catch (error) { notice(error.message); }
   finally { button.disabled = false; }
 });
-$("capture").addEventListener("click", () => {
-  if (typing) return;
+async function beginKeyboardCapture() {
+  if (typing || !authenticated || captureStarting) return;
   if (!usbConnected) { notice(usbHint); return; }
-  if (capturing) { stopCapture(); return; }
-  capturing = keyboardOnly = true;
-  $("screen").focus(); captureUI(); input({type: "heartbeat"});
-  requestKeyboardLock();
+  const generation = keyboardLockGeneration;
+  captureStarting = true; captureUI(); fullscreenUI();
+  try {
+    if (!isVideoFullscreen() && typeof $("viewer").requestFullscreen === "function" && document.fullscreenEnabled !== false) {
+      try { await $("viewer").requestFullscreen(); }
+      catch { /* Ordinary input remains available; report the limited mode below. */ }
+    }
+    if (generation !== keyboardLockGeneration || !authenticated || !usbConnected || typing) return;
+    capturing = keyboardOnly = true;
+    $("screen").focus(); captureUI(); input({type: "heartbeat"});
+    await requestKeyboardLock();
+  } finally {
+    if (generation === keyboardLockGeneration) { captureStarting = false; captureUI(); fullscreenUI(); }
+  }
+}
+$("capture").addEventListener("click", async () => {
+  if (capturing || captureStarting) { stopCapture(); return; }
+  await beginKeyboardCapture();
 });
 $("screen").addEventListener("click", async event => {
-  if (typing) return;
+  if (typing || captureStarting) return;
   if (event.target?.closest?.("#fullscreen-controls")) return;
   if (!authenticated || document.pointerLockElement === $("screen")) return;
   if (!usbConnected) { notice(usbHint); return; }
+  if (!capturing) await beginKeyboardCapture();
+  if (!capturing) return;
+  pointerCaptureGeneration = keyboardLockGeneration;
   try { await $("screen").requestPointerLock(); }
-  catch { notice("마우스 캡처를 사용할 수 없습니다. 키보드 제어 버튼을 사용하세요."); }
+  catch { pointerCaptureGeneration = null; notice("마우스 캡처를 사용할 수 없습니다. 키보드 제어 버튼을 사용하세요."); }
 });
 document.addEventListener("pointerlockchange", () => {
   if (document.pointerLockElement === $("screen")) {
-    if (!usbConnected || typing) { document.exitPointerLock(); return; }
+    if (!authenticated || !usbConnected || typing || pointerCaptureGeneration !== keyboardLockGeneration) { document.exitPointerLock(); return; }
     capturing = true; keyboardOnly = false; $("screen").focus();
     captureUI(); input({type: "heartbeat"});
     requestKeyboardLock();
@@ -554,11 +583,45 @@ $("logout").addEventListener("click", async () => {
   try { await api("/api/logout", {}); } catch (error) { notice(error.message); }
   showLogin();
 });
-document.querySelectorAll("[data-keys]").forEach(button => button.addEventListener("click", () => {
-  if (typing) return;
-  stopCapture();
-  input({type: "tap", codes: button.dataset.keys.split(",")});
-}));
+// 2026-10-16 01:00 KST: explicit HID shortcuts avoid relying on local Windows key interception.
+async function sendShortcut(codes) {
+  if (typing || shortcutSending || !authenticated || !usbConnected) return;
+  if (!Array.isArray(codes) || !codes.length || codes.length > 14 || codes.some(code => !known.has(code)) || codes.filter(code => KVMKeyMap[code] < 0xE0).length > 6) {
+    $("shortcut-status").textContent = "전송할 키 조합을 확인하세요."; return;
+  }
+  stopCapture(); shortcutSending = true; usbControls();
+  $("shortcut-status").textContent = "대상에 키 전송 중…";
+  try {
+    await input({type: "tap", codes}, true);
+    $("shortcut-status").textContent = "키를 대상에 전송했습니다. 대상 화면에서 결과를 확인하세요.";
+    if (authenticated && codes.length === 2 && codes.includes("ControlLeft") && codes.includes("KeyC")) await copyTargetClipboard();
+  } catch { $("shortcut-status").textContent = "대상에 전송하지 못했습니다. USB 연결 상태를 확인하세요."; }
+  finally { shortcutSending = false; usbControls(); }
+}
+document.querySelectorAll("[data-keys]").forEach(button => button.addEventListener("click", () => sendShortcut(button.dataset.keys.split(","))));
+const shortcutModifierIds = [["shortcut-ctrl", "ControlLeft"], ["shortcut-alt", "AltLeft"], ["shortcut-shift", "ShiftLeft"], ["shortcut-win", "MetaLeft"]];
+const modifierOnlyOption = document.createElement("option");
+modifierOnlyOption.value = ""; modifierOnlyOption.textContent = "추가 키 없음 · Ctrl+Shift 등";
+$("shortcut-key").appendChild(modifierOnlyOption);
+for (const code of known) {
+  if (KVMKeyMap[code] >= 0xE0) continue;
+  const option = document.createElement("option");
+  option.value = code;
+  option.textContent = code.replace(/^Key([A-Z])$/, "$1").replace(/^Digit([0-9])$/, "$1");
+  $("shortcut-key").appendChild(option);
+}
+$("shortcut-key").value = "KeyA";
+$("windows-shortcut").addEventListener("change", () => {
+  stopCapture(); $("shortcut-custom").hidden = $("windows-shortcut").value !== "custom";
+});
+for (const id of ["windows-shortcut", "shortcut-key", ...shortcutModifierIds.map(([id]) => id)]) $(id).addEventListener("focus", stopCapture);
+$("shortcut-send").addEventListener("click", () => {
+  const preset = $("windows-shortcut").value;
+  const codes = preset === "custom"
+    ? [...shortcutModifierIds.filter(([id]) => $(id).checked).map(([, code]) => code), ...($("shortcut-key").value ? [$("shortcut-key").value] : [])]
+    : (preset || "AltLeft,Tab").split(",");
+  return sendShortcut(codes);
+});
 window.addEventListener("blur", () => { cancelTextEntry(); stopCapture(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) { cancelTextEntry(); stopCapture(); } });
 window.addEventListener("pagehide", () => {

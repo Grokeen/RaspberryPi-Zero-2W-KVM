@@ -59,12 +59,89 @@
               <summary>입력 컨트롤</summary>
               <div class="toolbar"><button id="capture">키보드 제어 시작</button><button id="release" class="secondary">입력 모두 해제</button></div>
               <!-- 2026-10-16 00:15 KST: explain the fixed release chord without adding a settings control. -->
-              <p id="keyboard-help" class="hint">제어 해제·입력 중지: Ctrl+Alt+Shift를 함께 누르세요. Esc는 대상 컴퓨터에 전달합니다. Esc·Alt+Tab 등은 전체 화면에서 브라우저의 키보드 잠금을 허용해야 전달됩니다. Fn 등 OS가 브라우저에 전달하지 않는 키는 지원되지 않습니다.</p>
+              <p id="keyboard-help" class="hint">제어 해제·입력 중지: Ctrl+Alt+Shift를 함께 누르세요. 제어 시작 시 전체 화면과 키보드 잠금을 요청합니다. Esc를 길게 누르면 브라우저 비상 해제가 동작합니다. Ctrl+Alt+Del·Win+L 등 이 PC에서 가로채는 키는 아래 직접 전송을 사용하세요. Fn처럼 OS가 전달하지 않는 키는 물리 입력으로 받을 수 없습니다.</p>
+              <p id="keyboard-status" class="hint" role="status" aria-live="polite">제어 대기 · 시작하면 전체 화면과 키보드 잠금을 요청합니다.</p>
               <div class="shortcut-buttons">
                 <button data-keys="ControlLeft,AltLeft,Delete" class="secondary">Ctrl + Alt + Del</button><button data-keys="PrintScreen" class="secondary">PrtSc</button>
                 <button data-keys="MetaLeft" class="secondary">Win / Command</button><button data-keys="AltLeft,Tab" class="secondary">Alt + Tab</button>
                 <button data-keys="Escape" class="secondary">Esc</button><button data-keys="Enter" class="secondary">Enter</button><button data-keys="F2" class="secondary">F2</button><button data-keys="F12" class="secondary">F12</button>
               </div>
+              <!-- 2026-10-16 01:00 KST: send Windows shortcuts through HID even if the local OS reserves them. -->
+              <label for="windows-shortcut">Windows 단축키 · 대상에 직접 전송</label>
+              <select id="windows-shortcut" disabled>
+                <optgroup label="창과 시스템">
+                  <option value="AltLeft,Tab">Alt+Tab · 다음 창</option>
+                  <option value="AltLeft,ShiftLeft,Tab">Alt+Shift+Tab · 이전 창</option>
+                  <option value="ControlLeft,AltLeft,Tab">Ctrl+Alt+Tab · 창 선택 유지</option>
+                  <option value="AltLeft,Escape">Alt+Esc · 창 순환</option>
+                  <option value="AltLeft,F4">Alt+F4 · 창 닫기</option>
+                  <option value="AltLeft,Space">Alt+Space · 창 메뉴</option>
+                  <option value="ControlLeft,ShiftLeft,Escape">Ctrl+Shift+Esc · 작업 관리자</option>
+                  <option value="ControlLeft,AltLeft,Delete">Ctrl+Alt+Del · 보안 화면</option>
+                  <option value="ControlLeft,Escape">Ctrl+Esc · 시작 메뉴</option>
+                  <option value="MetaLeft,Tab">Win+Tab · 작업 보기</option>
+                  <option value="MetaLeft,KeyD">Win+D · 바탕 화면</option>
+                  <option value="MetaLeft,KeyE">Win+E · 파일 탐색기</option>
+                  <option value="MetaLeft,KeyR">Win+R · 실행</option>
+                  <option value="MetaLeft,KeyI">Win+I · 설정</option>
+                  <option value="MetaLeft,KeyS">Win+S · 검색</option>
+                  <option value="MetaLeft,KeyX">Win+X · 빠른 링크</option>
+                  <option value="MetaLeft,KeyL">Win+L · 대상 PC 잠금</option>
+                  <option value="MetaLeft,KeyA">Win+A · 빠른 설정</option>
+                  <option value="MetaLeft,KeyN">Win+N · 알림과 달력</option>
+                  <option value="MetaLeft,KeyP">Win+P · 화면 출력</option>
+                  <option value="MetaLeft,KeyV">Win+V · 클립보드 기록</option>
+                  <option value="MetaLeft,Period">Win+. · 이모지</option>
+                  <option value="MetaLeft,Space">Win+Space · 입력 언어</option>
+                  <option value="AltLeft,ShiftLeft">Alt+Shift · 입력 언어</option>
+                  <option value="Lang1">한/영키 · 한글 입력 전환</option>
+                </optgroup>
+                <optgroup label="창 정렬과 가상 데스크톱">
+                  <option value="MetaLeft,ArrowLeft">Win+← · 왼쪽 정렬</option>
+                  <option value="MetaLeft,ArrowRight">Win+→ · 오른쪽 정렬</option>
+                  <option value="MetaLeft,ArrowUp">Win+↑ · 최대화</option>
+                  <option value="MetaLeft,ArrowDown">Win+↓ · 복원/최소화</option>
+                  <option value="MetaLeft,KeyM">Win+M · 모두 최소화</option>
+                  <option value="MetaLeft,ShiftLeft,KeyM">Win+Shift+M · 최소화 복원</option>
+                  <option value="MetaLeft,ShiftLeft,ArrowLeft">Win+Shift+← · 왼쪽 모니터</option>
+                  <option value="MetaLeft,ShiftLeft,ArrowRight">Win+Shift+→ · 오른쪽 모니터</option>
+                  <option value="MetaLeft,ControlLeft,KeyD">Win+Ctrl+D · 데스크톱 추가</option>
+                  <option value="MetaLeft,ControlLeft,ArrowLeft">Win+Ctrl+← · 이전 데스크톱</option>
+                  <option value="MetaLeft,ControlLeft,ArrowRight">Win+Ctrl+→ · 다음 데스크톱</option>
+                  <option value="MetaLeft,ControlLeft,F4">Win+Ctrl+F4 · 데스크톱 닫기</option>
+                </optgroup>
+                <optgroup label="편집과 캡처">
+                  <option value="ControlLeft,KeyC">Ctrl+C · 복사</option>
+                  <option value="ControlLeft,KeyV">Ctrl+V · 붙여 넣기</option>
+                  <option value="ControlLeft,KeyX">Ctrl+X · 잘라내기</option>
+                  <option value="ControlLeft,KeyA">Ctrl+A · 모두 선택</option>
+                  <option value="ControlLeft,KeyZ">Ctrl+Z · 실행 취소</option>
+                  <option value="ControlLeft,KeyY">Ctrl+Y · 다시 실행</option>
+                  <option value="ControlLeft,KeyS">Ctrl+S · 저장</option>
+                  <option value="ControlLeft,KeyF">Ctrl+F · 찾기</option>
+                  <option value="ControlLeft,ShiftLeft,KeyV">Ctrl+Shift+V · 서식 없이 붙여 넣기</option>
+                  <option value="ControlLeft,Tab">Ctrl+Tab · 다음 탭</option>
+                  <option value="ControlLeft,ShiftLeft,Tab">Ctrl+Shift+Tab · 이전 탭</option>
+                  <option value="AltLeft,ArrowLeft">Alt+← · 뒤로</option>
+                  <option value="AltLeft,ArrowRight">Alt+→ · 앞으로</option>
+                  <option value="AltLeft,ArrowUp">Alt+↑ · 상위 폴더</option>
+                  <option value="ControlLeft,ShiftLeft,KeyN">Ctrl+Shift+N · 새 폴더</option>
+                  <option value="MetaLeft,ShiftLeft,KeyS">Win+Shift+S · 영역 캡처</option>
+                  <option value="AltLeft,PrintScreen">Alt+PrtSc · 창 캡처</option>
+                  <option value="MetaLeft,PrintScreen">Win+PrtSc · 화면 캡처 저장</option>
+                  <option value="PrintScreen">PrtSc · 화면 캡처</option>
+                  <option value="F2">F2 · 이름 바꾸기</option>
+                  <option value="F5">F5 · 새로고침</option>
+                </optgroup>
+                <option value="custom">다른 조합 직접 선택…</option>
+              </select>
+              <div id="shortcut-custom" hidden>
+                <div class="shortcut-modifiers"><label><input id="shortcut-ctrl" type="checkbox" checked disabled> Ctrl</label><label><input id="shortcut-alt" type="checkbox" disabled> Alt</label><label><input id="shortcut-shift" type="checkbox" disabled> Shift</label><label><input id="shortcut-win" type="checkbox" disabled> Win</label></div>
+                <label for="shortcut-key">함께 보낼 키</label><select id="shortcut-key" disabled></select>
+              </div>
+              <button id="shortcut-send" type="button" class="secondary" disabled>대상에 직접 전송</button>
+              <p class="hint">브라우저가 가로채는 단축키도 USB 키보드로 대상에 보냅니다. 이 PC의 창 전환이나 잠금은 실행하지 않습니다. 동작은 대상 Windows 버전·설정·현재 앱에 따릅니다.</p>
+              <p id="shortcut-status" class="hint" role="status" aria-live="polite"></p>
               <a href="/pi" class="button secondary pi-link">Pi 원격 제어</a>
             </details>
             <details class="settings-section">
@@ -97,6 +174,6 @@
       </div>
     </section>
   </main>
-  <footer>Raspberry Pi Zero 2 W · v0.6.0 · 로컬 네트워크 콘솔</footer>
+  <footer>Raspberry Pi Zero 2 W · v0.6.1 · 로컬 네트워크 콘솔</footer>
 </body>
 </html>
