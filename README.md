@@ -191,11 +191,36 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\KVM-Windows-Clipb
 | Pi USB keyboard not found | 도우미를 대상 PC에서 실행했는지, Pi USB 데이터 케이블이 연결됐는지 확인 |
 | Cannot reach the Pi KVM server | 대상 Windows에서 Pi 서버에 접속할 수 있는지 확인 |
 | Helper authentication failed | 콘솔에 로그인해 새 실행 묶음을 다운로드 |
-| 도우미 연결되지 않음 | 대상 PC의 도우미 창이 실행 중이며 Connected to KVM인지 확인 |
+| 도우미 연결되지 않음 | 콘솔의 연결 상태와 Check-KVM-Clipboard.cmd 출력 확인. 수동 실행이면 도우미 창이 실행 중인지 확인 |
 | 시간초과 | Check-KVM-Clipboard.cmd로 통신 검사. 자동 실행 중이면 마지막 상태가 USB 대기·클립보드 읽기·결과 전송 중 어디인지 확인 |
 | 이 PC 클립보드 쓰기 차단 | localhost 주소와 브라우저의 클립보드 쓰기 권한 확인 |
 
 도우미가 연결되지 않아도 대상 Windows 안에서의 Ctrl+C 입력은 그대로 전달됩니다.
+
+### 동작 원리와 보안 점검
+
+키보드·마우스는 **브라우저 → Pi → USB HID → 대상 Windows**, 영상은 **대상 HDMI → 캡처보드 → 조종하는 PC** 경로로 전달됩니다. 클립보드 텍스트는 **대상 Windows 도우미 → Pi → 브라우저의 현재 PC 클립보드** 경로로 네트워크를 통해 전달됩니다.
+
+1. 최초 설치가 현재 사용자의 시작프로그램 폴더에 바로가기를 등록합니다. 로그인 후 실행된 도우미는 Pi USB 연결을 감지하며 미연결이면 대기합니다. Windows에 설치된 도우미가 재연결을 감지하는 구조입니다.
+2. KVM에서 Ctrl+C를 누르면 Pi가 대상 Windows에 USB 키 입력을 보내고 별도의 복사 요청을 만듭니다.
+3. 도우미는 명시적 요청을 받았을 때 Windows 클립보드 API로 텍스트를 읽어 전용 인증 토큰과 함께 Pi에 전송합니다. 브라우저가 결과를 받아 현재 PC 클립보드에 기록합니다.
+4. 텍스트는 최대 UTF-8 64 KiB, 요청은 10초 만료이며 결과는 한 번 전달합니다. 도우미 상태 파일에는 처리 단계만 기록합니다.
+
+2026-10-16 실사용 확인: 대상 Windows 도우미 연결과 Ctrl+C → 제어 해제 → 조종하는 PC Ctrl+V 전달은 사용자 확인을 받았습니다. 실제 USB 분리·재연결 시험은 별도 확인이 필요합니다.
+
+2026-10-16 파일 검사: 조종하는 PC의 Microsoft Defender(실시간 보호 활성, 보안 인텔리전스 `1.461.35.0`)로 실행 묶음 7개 파일과 ZIP을 사용자 지정 검사했습니다. 실제 서버 주소와 인증 토큰을 더미 값으로 바꾼 사본에서 **위협 없음, 종료 코드 0**을 확인했습니다. 대상 PC의 백신이나 기업 보안 정책을 직접 검사한 결과는 아닙니다. 도우미와 설치기 PowerShell 파일의 Authenticode 상태는 `NotSigned`입니다.
+
+| 확인 항목 | 현재 판단 |
+| --- | --- |
+| 파일 악성코드 검사 | 위 조건의 로컬 Defender 검사에서 탐지 없음. 다른 엔진·향후 업데이트·행위 탐지까지 보증하지 않음 |
+| 실행 정책·EDR | 서명 없는 PowerShell, 백그라운드 실행, 시작프로그램 등록, 클립보드 읽기와 네트워크 전송은 정책 검토 대상. 실제 차단·경고·감사 여부는 대상 제품과 관리자 정책 확인 필요 |
+| DRM·DLP | 문서의 복사 권한이나 클립보드 반출 정책이 적용될 수 있음. 일반 텍스트 복사 성공이 모든 보호 자료의 반출 허용을 뜻하지 않음 |
+| 장치·네트워크 통제 | USB 장치와 Pi 접속 경로의 허용 여부는 조직의 정책 확인 필요 |
+| 전송 구간 | 기본 구성은 HTTP이며 전송 구간 암호화가 없음. 전용 토큰 인증과 전송 암호화는 별개 |
+
+`-ExecutionPolicy Bypass`는 이 PowerShell 실행의 스크립트 실행 정책 옵션입니다. 백신/AMSI를 해제하지 않으며, 조직의 App Control 정책이 허용하지 않는 스크립트는 제한되거나 차단될 수 있습니다. 파일 검사 성공과 실제 실행 중 탐지·감사 여부는 구분해야 합니다. 회사 환경에서는 보안 담당자에게 설치 파일, 시작프로그램 등록과 클립보드 전송 경로를 검토받으세요.
+
+근거: [Microsoft Defender 파일 검사](https://learn.microsoft.com/en-us/defender-endpoint/command-line-arguments-microsoft-defender-antivirus), [행위 감시](https://learn.microsoft.com/en-us/defender-endpoint/behavior-monitor), [PowerShell 보안 기능](https://learn.microsoft.com/en-us/powershell/scripting/security/security-features), [App Control](https://learn.microsoft.com/en-us/powershell/scripting/security/app-control/application-control), [DRM 복사·붙여넣기 권한 예시](https://osc.fasoo.com/data/osc/download/FED_v4.0_FSN_User_Guide%20%5BKOR%5D.pdf), [Endpoint DLP](https://learn.microsoft.com/en-us/purview/dlp-policy-reference).
 
 ## 7. 조종하는 PC의 텍스트 → 대상에 입력
 
@@ -238,7 +263,7 @@ python3 -m build
 
 GitHub Actions는 Python 3.10/3.11/3.13에서 검사와 패키지 빌드를 수행하고, Windows에서도 도우미의 HTTP 통신과 설치·제거를 격리 검사합니다. Windows에서는 `powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/test_windows_clipboard.ps1`로 같은 검사를 실행할 수 있습니다. 실제 클립보드나 시작프로그램 폴더에는 접근하지 않습니다. 변경 기록은 [UPDATE.md](UPDATE.md), 작업 결과와 확인 방법은 [OWERORDER.md](OWERORDER.md)에 기록합니다.
 
-Alt+Tab의 대상 Windows 창 전환과 한/영키 정상 작동은 사용자 확인을 받았습니다. 자동 검증에서 확인한 키 보고/이벤트 경로와 실제 대상 OS에서의 전체 기능 실측은 구분합니다. 클립보드 전달과 USB 재연결 자동 동작은 대상 Windows에 도우미를 설치한 뒤 실제 환경에서 확인해야 합니다.
+Alt+Tab의 대상 Windows 창 전환, 한/영키 정상 작동, 대상 Windows 도우미 연결과 현재 PC까지의 클립보드 전달은 사용자 확인을 받았습니다. 자동 검증에서 확인한 키 보고/이벤트 경로와 실제 대상 OS에서의 전체 기능 실측은 구분합니다. 실제 USB 분리·재연결 시험과 대상 보안 제품의 차단·감사 여부는 별도 확인이 필요합니다.
 
 ## 참고 자료
 
