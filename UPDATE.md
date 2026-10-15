@@ -317,3 +317,11 @@
 - 구현 커밋 `af3d510a6cf45a3d1093baf2204ff94325074a12`과 README를 PR #3으로 게시해 main에 병합했습니다. 병합 커밋은 `d80d9b4578df19affd7c42cfa7d5d38cf90a7d77`입니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/pull/3
 - 브랜치 CI `38774657754`, PR CI `38774665596`에서 Python 3.10/3.11/3.13 검사와 Node 테스트/빌드가 모두 성공했습니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38774665596
 - 최종 wheel/source archive와 Pi 소스에 공개 README 및 검증 기록을 반영했습니다. 실제 대상 Windows의 한/영 전환과 클립보드 왕복은 사용자 확인을 요청한 상태이며, 도우미는 새 실행 묶음으로 대상 PC에서 최초 실행해야 합니다. 설치나 실사용 결과를 확인한 것으로 기록하지 않습니다.
+
+## 2026-10-16 03:00 KST — CodexCode — 한/영키 실사용 확인 및 도우미 실행 위치 명확화
+
+- 사용자가 한/영키의 정상 작동을 확인했습니다. 앞선 전환 시험 실패 보고 이후의 최신 실사용 결과로 기록하며, 전환 설정을 추가로 변경하지 않았습니다.
+- 사용자가 보고한 `Pi USB keyboard not found` 오류를 점검했습니다. 실제 Pi의 USB VID/PID는 `1d6b:0104`로 도우미의 검사 조건과 일치하며, USB 상태는 `configured`입니다. 점검 시 도우미 연결은 없었고 최근 도우미 poll 요청도 없었습니다. 대상 Windows에서의 도우미 실행과 실제 클립보드 전달은 아직 확인 전입니다.
+- README에 실행 위치 표를 추가했습니다. `Open-KVM-PC.cmd`는 브라우저로 조종하는 PC, `Start-KVM-Clipboard.cmd`와 클립보드 PowerShell 명령은 Pi USB 데이터 케이블이 연결된 조종당하는 Windows에서 실행합니다. 캡처보드의 연결 위치와 구분하도록 설명했습니다.
+- 이번 변경은 문서에만 적용합니다. USB 장치 재연결이나 서비스 재시작은 수행하지 않습니다. 기존 v0.6.2의 자동 검사 126개와 사용자 확인 결과를 구분해 기록했습니다.
+- 문서 diff의 공백 검사와 v0.6.2 wheel/source archive 빌드를 통과했습니다. 개인 화면 이미지와 로컬 접속 정보는 공개 대상에서 제외했습니다.

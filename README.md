@@ -151,6 +151,13 @@ Windows와 브라우저는 일부 키를 먼저 처리합니다. Ctrl+Alt+Del·W
 
 **도우미를 실행할 곳은 조종당하는 Windows입니다. 현재 KVM 브라우저를 보고 있는 PC에서 실행하면 안 됩니다.**
 
+대상 PC는 **Pi의 USB 데이터 케이블이 연결되어 키보드·마우스 입력을 받는 Windows**입니다. 캡처보드가 연결된 위치와 구분해 주세요.
+
+| 실행 파일 | 실행할 컴퓨터 |
+| --- | --- |
+| `Open-KVM-PC.cmd` | KVM 브라우저로 화면을 보며 조종하는 PC |
+| `Start-KVM-Clipboard.cmd` 또는 클립보드 PowerShell 명령 | Pi USB 케이블이 연결된, 조종당하는 Windows |
+
 1. 콘솔의 **클립보드 · 대상 → 이 PC → 대상 Windows 실행 묶음 받기**를 누릅니다.
 2. 받은 `KVM-Windows-Clipboard.zip`을 **대상 Windows**로 옮깁니다. 대상 Windows의 브라우저에서 Pi 콘솔에 로그인해 직접 받아도 됩니다.
 3. 대상 PC에서 압축을 풀고 **Start-KVM-Clipboard.cmd**를 더블 클릭합니다.
