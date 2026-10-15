@@ -1,6 +1,6 @@
 # RaspberryPi-Zero-2W-KVM
 
-Raspberry Pi Zero 2 W를 USB 키보드와 마우스로 연결하고, 같은 네트워크의 웹 브라우저에서 대상 컴퓨터를 제어합니다. CodexCode v0.6.0은 USB 입력 제어, 선택적 V4L2 영상, Pi 자체의 VNC 원격 데스크톱을 제공합니다.
+Raspberry Pi Zero 2 W를 USB 키보드와 마우스로 연결하고, 같은 네트워크의 웹 브라우저에서 대상 컴퓨터를 제어합니다. CodexCode v0.6.1은 USB 입력 제어, 선택적 V4L2 영상, Pi 자체의 VNC 원격 데스크톱을 제공합니다.
 
 ## 연결 구조
 
@@ -306,10 +306,34 @@ wheel 설치 후에는 `zero2w-kvm-local --pi-host <Pi-IP> --open-browser`로도
 ## 한/영키와 제어 해제
 
 **Ctrl+Alt+Shift를 함께 누르면 USB 제어와 전체 화면을 종료합니다.** 좌우 어느 쪽 키도 사용할 수 있습니다.
-Esc는 대상 컴퓨터에 전달합니다. 전체 화면에서 키보드 제어를 시작하고 브라우저의 키보드 잠금 권한을 허용하세요.
+제어 시작 버튼이나 화면 클릭 시 전체 화면에 진입하고 키보드 잠금을 요청합니다. 브라우저에 권한 요청이 나오면 직접 허용하세요.
+Esc는 대상 컴퓨터에 전달합니다. 입력 컨트롤의 상태에 **키보드 잠금 적용**이 표시되는지 확인하세요.
 지원하는 Chrome/Edge에서는 Esc와 일부 시스템 단축키도 전달할 수 있습니다. 브라우저의 긴 Esc 비상 해제는 유지됩니다.
 일반 화면이나 키보드 잠금 미지원 브라우저에서는 브라우저가 Esc/단축키를 가로챌 수 있습니다.
 Fn 등 운영체제가 브라우저에 전달하지 않는 키는 지원되지 않습니다.
+
+## Windows 기본 단축키 점검과 직접 전송
+
+물리 키 입력은 이 PC의 Windows와 브라우저가 허용하는 키에 한정됩니다. 전체 화면은 콘솔이 요청하는 Fullscreen API 방식이며 F11만으로는 키보드 잠금을 사용할 수 없습니다.
+키보드 잠금 거부/미지원 시 입력 컨트롤에 제한 상태를 표시합니다. Ctrl+Alt+Del·Win+L처럼 이 PC에서 가로채는 키는 직접 전송을 사용하세요.
+
+오른쪽 **입력 컨트롤 → Windows 단축키 · 대상에 직접 전송**에서 조합을 고르고 버튼을 누릅니다.
+Alt+Tab 빠른 버튼도 사용할 수 있습니다. 직접 전송은 브라우저의 물리 키 이벤트를 거치지 않고 Pi의 USB 키보드로 대상에 전송합니다.
+**다른 조합 직접 선택…**에서는 Ctrl/Alt/Shift/Win과 146개 일반 물리 키 중 하나를 조합할 수 있습니다.
+이 조작은 제어 중인 키를 먼저 해제하며 이 PC에서 해당 단축키를 실행하지 않습니다. 해제 조합 Ctrl+Alt+Shift는 그대로입니다.
+
+| 확인한 조합 | 전송 검사 | 실제 대상 Windows 동작 |
+| --- | --- | --- |
+| Alt+Tab / Alt+Shift+Tab / Ctrl+Alt+Tab / Alt+Esc / Alt+F4 / Alt+Space | 통과 | 대상 앱에서 확인 필요 |
+| Ctrl+Shift+Esc / Ctrl+Alt+Del / Ctrl+Esc | 통과 | 물리 입력이 가로채지면 직접 전송 사용 |
+| Win+Tab/D/E/R/I/S/X/L/A/N/P/V/. / 입력 언어 전환 | 통과 | 대상 버전·설정에 따름 |
+| Win+방향키 / Win+M / Win+Shift+M / 모니터 이동 / 가상 데스크톱 | 통과 | 대상 앱·화면 구성에 따름 |
+| Ctrl+C/V/X/A/Z/Y/S/F / Ctrl+Shift+V / Ctrl+Tab / 탐색기 조합 / 캡처 | 통과 | 대상 앱·설정에 따름 |
+
+58개 프리셋의 브라우저 이벤트 처리와 직접 전송 HTTP→HID 보고/키 해제를 자동 검증했습니다.
+이는 대상 Windows에서 모든 기능을 실측했다는 뜻은 아닙니다. OS가 가로채는 키, Fn, 앱/Windows 버전/정책 차이 때문에 모든 물리 단축키를 보장할 수 없습니다.
+근거: [Microsoft Windows 기본 단축키](https://support.microsoft.com/en-us/accessibility/windows/keyboard-shortcuts-in-windows),
+[Keyboard Lock의 전체 화면 조건과 OS 제한](https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock).
 
 전용 한/영·한자키, 국제 배열 키, F13–F24, 확장 숫자 키패드를 포함한 물리 키 코드 154개를 처리합니다.
 한/영·한자·PrtSc·Pause는 키를 놓는 이벤트가 누락되어도 눌린 채 남지 않도록 처리합니다.

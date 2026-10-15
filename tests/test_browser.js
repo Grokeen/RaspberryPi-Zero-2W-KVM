@@ -9,6 +9,7 @@ const source = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/ap
 // 2026-10-11 15:27 KST: CodexCode - exercise textbox typing with the real text planner.
 const textSource = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/text-entry.js"), "utf8");
 const keyMap = JSON.parse(fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/keyboard-map.json"), "utf8"));
+const consoleHtml = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/index.html"), "utf8");
 
 // 2026-10-15 23:10 KST: CodexCode - exercise device selection and capture cleanup races.
 function captureFixture(getUserMedia) {
@@ -122,6 +123,7 @@ function fixture(usbState = "configured", options = {}) {
     removeAttribute() {}
     setAttribute(name, value) { this[name] = value; }
     replaceChildren(...children) { this.children = children; this.value = children[0]?.value || ""; }
+    appendChild(child) { (this.children ||= []).push(child); return child; }
     async play() { this.readyState = 2; this.videoWidth = 1920; this.videoHeight = 1080; }
     async requestPointerLock() { this.pointerLockRequested = true; }
     async requestFullscreen() {
@@ -138,7 +140,11 @@ function fixture(usbState = "configured", options = {}) {
     if (!elements.has(id)) elements.set(id, new Element());
     return elements.get(id);
   };
-  document.querySelectorAll = () => [];
+  // 2026-10-16 01:00 KST: exercise real shortcut button bindings from the console HTML.
+  const shortcutButtons = [...consoleHtml.matchAll(/data-keys="([^"]+)"/g)].map(match => {
+    const button = new Element(); button.dataset.keys = match[1]; return button;
+  });
+  document.querySelectorAll = selector => selector === "[data-keys]" ? shortcutButtons : [];
   document.exitPointerLock = () => { document.pointerLockElement = null; };
   document.fullscreenElement = null;
   document.fullscreenEnabled = options.fullscreenSupported !== false;
@@ -172,7 +178,7 @@ function fixture(usbState = "configured", options = {}) {
   const optionsClipboardText = options.clipboardText, optionsClipboardOffline = options.clipboardOffline;
   vm.runInContext(textSource, context);
   vm.runInContext(source, context);
-  return {context, document, window, elements, events, intervals,
+  return {context, document, window, elements, events, intervals, shortcutButtons,
     setVideoReady: value => { videoReady = value; },
     run: code => vm.runInContext(code, context)};
 }
@@ -245,6 +251,7 @@ test("holding a letter still repairs a missed Shift event without duplicate repe
 test("pointer movement and buttons use the HID bit order", async () => {
   const f = fixture();
   await f.run("status()");
+  await f.elements.get("screen").fire("click", {});
   f.document.pointerLockElement = f.elements.get("screen");
   await f.document.fire("pointerlockchange");
   await f.run("chain");
@@ -407,9 +414,146 @@ test("a late keyboard-lock grant is immediately released after capture stops", a
   const entered = new Promise(resolve => { requested = resolve; });
   const f = fixture("configured", {keyboard: {lock: () => new Promise(resolve => { grant = resolve; requested(); }), unlock: () => unlocked++}});
   await f.run("status()"); await f.elements.get("video-fullscreen").fire("click");
-  await f.elements.get("capture").fire("click"); await entered;
-  f.run("stopCapture()"); grant(); await f.run("keyboardLockQueue");
+  const starting = f.elements.get("capture").fire("click"); await entered;
+  f.run("stopCapture()"); grant(); await starting; await f.run("keyboardLockQueue");
   assert.equal(f.run("keyboardLocked"), false); assert.ok(unlocked > 0);
+});
+
+// 2026-10-16 01:00 KST: Windows shortcut startup, OS-reserved fallback, and ordered reports.
+const windowsPresets = [...consoleHtml.match(/<select id="windows-shortcut"[\s\S]*?<\/select>/)[0]
+  .matchAll(/<option value="([^"]+)"/g)].map(match => match[1]).filter(value => value !== "custom");
+
+test("starting keyboard control enters API fullscreen before locking all keys", async () => {
+  const calls = [];
+  let f;
+  f = fixture("configured", {keyboard: {lock: async () => {
+    calls.push(f.document.fullscreenElement === f.elements.get("viewer"));
+  }, unlock() {}}});
+  await f.run("status()"); await f.elements.get("capture").fire("click");
+  assert.deepEqual(calls, [true]);
+  assert.equal(f.elements.get("viewer").fullscreenRequests, 1);
+  assert.equal(f.run("keyboardLocked && capturing && !captureStarting"), true);
+  assert.match(f.elements.get("keyboard-status").textContent, /키보드 잠금 적용/);
+});
+
+test("adding mouse capture keeps the granted keyboard lock without requesting permission again", async () => {
+  let locks = 0;
+  const f = fixture("configured", {keyboard: {lock: async () => locks++, unlock() {}}});
+  await f.run("status()"); await f.elements.get("capture").fire("click");
+  await f.elements.get("screen").fire("click", {});
+  f.document.pointerLockElement = f.elements.get("screen");
+  await f.document.fire("pointerlockchange"); await f.run("keyboardLockQueue");
+  assert.equal(locks, 1);
+  assert.equal(f.run("capturing && keyboardLocked && !keyboardOnly"), true);
+  assert.match(f.elements.get("keyboard-status").textContent, /키보드 잠금 적용/);
+});
+
+test("unsupported or rejected lock never reports successful system shortcut capture", async () => {
+  for (const options of [{fullscreenReject: true}, {fullscreenSupported: false}, {},
+    {keyboard: {lock: async () => { throw new Error("denied"); }, unlock() {}}}]) {
+    const f = fixture("configured", options);
+    await f.run("status()"); await f.elements.get("capture").fire("click");
+    assert.equal(f.run("capturing"), true);
+    assert.equal(f.run("keyboardLocked"), false);
+    assert.doesNotMatch(f.elements.get("keyboard-status").textContent, /키보드 잠금 적용/);
+    assert.match(f.elements.get("keyboard-status").textContent, /직접 전송/);
+  }
+});
+
+test("cancelling or logging out during fullscreen entry cannot start late keyboard capture", async () => {
+  for (const action of ["stopCapture()", "showLogin()", "usbConnected = false; stopCapture()"] ) {
+    const f = fixture(); await f.run("status()");
+    let grant;
+    f.elements.get("viewer").requestFullscreen = () => new Promise(resolve => { grant = resolve; });
+    const starting = f.elements.get("capture").fire("click");
+    assert.equal(f.run("captureStarting"), true);
+    f.run(action); grant(); await starting;
+    assert.equal(f.run("capturing || captureStarting || keyboardLocked"), false);
+    assert.deepEqual(f.events, []);
+  }
+});
+
+test("a delayed pointer grant after release cannot silently restart control", async () => {
+  const f = fixture(); await f.run("status()");
+  await f.elements.get("screen").fire("click", {});
+  f.run("stopCapture()");
+  f.document.pointerLockElement = f.elements.get("screen");
+  await f.document.fire("pointerlockchange");
+  assert.equal(f.document.pointerLockElement, null);
+  assert.equal(f.run("capturing"), false);
+});
+
+test("every Windows preset forwards its physical modifier sequence and releases all keys", async () => {
+  assert.ok(windowsPresets.length >= 55);
+  const modifiers = {ControlLeft: "ctrlKey", AltLeft: "altKey", ShiftLeft: "shiftKey", MetaLeft: "metaKey"};
+  const f = fixture(); await f.run("status()"); await f.elements.get("capture").fire("click");
+  for (const preset of windowsPresets) {
+    const codes = preset.split(",");
+    const flags = {ctrlKey: false, altKey: false, shiftKey: false, metaKey: false};
+    for (const code of codes) {
+      if (modifiers[code]) flags[modifiers[code]] = true;
+      await f.document.fire("keydown", {code, ...flags, preventDefault() {}});
+    }
+    await f.run("chain");
+    const down = f.events.at(-1);
+    assert.equal(down.type, ["Lang1", "PrintScreen"].some(code => codes.includes(code)) ? "tap" : "keyboard", preset);
+    assert.deepEqual(new Set(down.codes), new Set(codes), preset);
+    for (const code of [...codes].reverse()) {
+      if (modifiers[code]) flags[modifiers[code]] = false;
+      await f.document.fire("keyup", {code, ...flags, preventDefault() {}});
+    }
+    await f.run("chain");
+    assert.equal(f.run("keys.size"), 0, preset);
+    assert.equal(f.run("capturing"), true, preset);
+  }
+});
+
+test("all Windows presets and quick buttons send without browser keyboard events", async () => {
+  const f = fixture(); await f.run("status()");
+  for (const preset of windowsPresets) {
+    f.elements.get("windows-shortcut").value = preset;
+    await f.elements.get("shortcut-send").fire("click");
+    assert.deepEqual(f.events.at(-1), {type: "tap", codes: preset.split(",")}, preset);
+  }
+  for (const button of f.shortcutButtons) {
+    await button.fire("click");
+    assert.deepEqual(f.events.at(-1), {type: "tap", codes: button.dataset.keys.split(",")});
+  }
+  assert.equal(f.document.fullscreenElement, null);
+  assert.equal(f.run("capturing || keyboardLocked"), false);
+});
+
+test("custom Windows combinations release capture first and never send unknown keys", async () => {
+  const f = fixture(); await f.run("status()"); await f.elements.get("capture").fire("click");
+  await f.document.fire("keydown", {code: "AltLeft", altKey: true, preventDefault() {}});
+  f.elements.get("windows-shortcut").value = "custom";
+  await f.elements.get("windows-shortcut").fire("change");
+  f.elements.get("shortcut-ctrl").checked = true;
+  f.elements.get("shortcut-shift").checked = true;
+  f.elements.get("shortcut-win").checked = true;
+  f.elements.get("shortcut-key").value = "KeyB";
+  await f.elements.get("shortcut-send").fire("click");
+  assert.deepEqual(f.events.slice(-2), [{type: "release"}, {type: "tap", codes: ["ControlLeft", "ShiftLeft", "MetaLeft", "KeyB"]}]);
+  assert.equal(f.elements.get("shortcut-key").children.length, Object.values(keyMap).filter(usage => usage < 0xE0).length + 1);
+  f.elements.get("shortcut-win").checked = false;
+  f.elements.get("shortcut-key").value = "";
+  await f.elements.get("shortcut-send").fire("click");
+  assert.deepEqual(f.events.at(-1), {type: "tap", codes: ["ControlLeft", "ShiftLeft"]});
+  const count = f.events.length;
+  f.elements.get("shortcut-key").value = "UnknownKey";
+  await f.elements.get("shortcut-send").fire("click");
+  assert.equal(f.events.length, count);
+  assert.match(f.elements.get("shortcut-status").textContent, /확인/);
+});
+
+test("Windows shortcut sending is blocked when USB is detached or typing is active", async () => {
+  const f = fixture("not attached"); await f.run("status()");
+  assert.equal(f.elements.get("shortcut-send").disabled, true);
+  await f.elements.get("shortcut-send").fire("click");
+  assert.deepEqual(f.events, []);
+  f.run("usbConnected = true; typing = true");
+  await f.elements.get("shortcut-send").fire("click");
+  assert.deepEqual(f.events, []);
 });
 
 test("text input can use the dedicated Korean IME key", () => {

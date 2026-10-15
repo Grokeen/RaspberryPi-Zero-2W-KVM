@@ -280,3 +280,15 @@
 - 브랜치 CI `38762376750`, PR CI `38762522016`, 병합 후 CI `38762726824`에서 Python 3.10/3.11/3.13 검사와 Node 테스트/빌드가 모두 성공했습니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38762726824
 - wheel/source archive의 런타임 18개 파일과 로컬 소스 일치, 실행기 포함 및 비공개 접속 정보 제외를 검증했습니다. 공개 README만 별도 준비하여 사용자가 편집한 로컬 README를 보존했습니다. 최종 공개 문서는 Pi 편집용 소스에도 반영했습니다.
 - 사용자 요청에 따라 프로필 업적을 확인했습니다. Pull Shark와 Quickdraw는 기존 획득 상태입니다. 실제 구현 PR을 검증 후 자체 병합하여 YOLO 획득을 시도했으나 현재 프로필에 추가 표시는 확인되지 않았습니다. 신규 획득으로 확정하지 않으며 불필요한 PR/허위 공동 작성/유료 후원은 진행하지 않았습니다. 참고: https://docs.github.com/en/account-and-profile/reference/profile-reference#earning-achievements
+
+## 2026-10-16 01:05 KST — CodexCode — Windows 기본 단축키 점검 및 시작 절차 보완
+
+- 사용자 보고: Alt+Tab 등 Windows 기본 단축키가 전달되지 않는 경우. 기존 v0.6.0에서는 제어 시작과 Fullscreen API 진입이 별도여서 일반 화면/키보드 잠금 미적용 상태로 사용할 수 있었습니다. v0.6.1은 키보드 제어 시작과 화면 클릭에서 전체 화면 진입 후 키보드 잠금을 요청하도록 연결했습니다. 브라우저의 권한 승인은 사용자가 진행합니다.
+- 키보드 잠금 대기/적용/거부/미지원 상태를 별도로 표시합니다. API 성공도 Windows가 허용한 키만 의미하며, Ctrl+Alt+Del·Win+L 등 OS가 가로채는 키와 긴 Esc 비상 해제/Fn의 한계를 안내합니다. 기존 설명만으로 모든 단축키 전달을 보장할 수는 없습니다.
+- Windows 단축키 58개 프리셋과 Ctrl/Alt/Shift/Win + 일반 물리 키 146개 중 하나를 고르는 직접 전송을 추가했습니다. 실제 브라우저 키 입력을 거치지 않고 인증된 기존 USB tap API로 전달하며, 전송 전에 기존 키를 해제합니다. Ctrl+C 직접 전송은 기존 명시적 클립보드 가져오기도 실행합니다. 제어 해제 조합 Ctrl+Alt+Shift는 유지합니다.
+- 전체 화면/키보드 잠금 권한 응답이 늦게 도착해도 취소·로그아웃·USB 분리 후 제어가 시작되지 않도록 처리했습니다. 해제 후 늦은 마우스 잠금 승인도 무시합니다. 입력 중/USB 분리 시 단축키 전송을 차단하고 미식별 키 조합은 전송 전에 거부합니다.
+- 검증: 로컬 Python 58개 + Node 63개, 총 121개 통과. 58개 프리셋의 물리 keydown/keyup modifier 순서와 직접 전송, 실제 HTTP→mock HID writer 경로/최종 zero report를 검증했습니다. Alt+Tab, Ctrl+Alt+Del, Ctrl+Shift+Esc, Win+R, Win+Shift+S 등의 HID 보고 바이트는 독립된 기대값으로 비교했습니다. 데스크톱/모바일 등 5가지 격리된 렌더링 검증도 통과했습니다. 마우스 제어를 추가할 때 이미 허용된 키보드 잠금을 다시 요청하지 않는 것도 검증했습니다.
+- 실제 KVM 창 확인을 시도했으나 Computer Use가 현재 브라우저 URL을 확실히 판별하지 못해 화면 자동화를 중단했습니다. 이후 실제 UI 입력을 진행하지 않았으며 대상 앱에서 모든 Windows 단축키가 동작했다고 주장하지 않습니다. 원격 입력/잠금/창 닫기/캡처 같은 실제 대상 동작은 자동 검증 중 실행하지 않았습니다.
+- 기준: https://support.microsoft.com/en-us/accessibility/windows/keyboard-shortcuts-in-windows, https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock
+- Pi에서도 Python 58개와 Node 63개가 통과했습니다. 기존 런타임/편집용 소스를 백업하고 웹 파일만 갱신했으며 USB 장치를 재연결하지 않았습니다. v0.6.1, web/gadget active 및 USB configured를 확인했습니다.
+- 최종 런타임 18개 파일은 로컬·Pi 편집용 소스·설치본이 일치합니다. 실제 localhost 화면/키 테이블/인증 API/도우미 다운로드/noVNC 자산과 외부 Host·Origin 차단 검증을 통과했습니다. 직접 조합 UI의 데스크톱/모바일 추가 2가지 렌더링도 검증해 가로 넘침이 없음을 확인했습니다.
