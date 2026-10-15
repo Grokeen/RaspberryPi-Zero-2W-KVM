@@ -43,6 +43,52 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.request("/api/input", {"type": "release"})[0], 401)
         self.assertEqual(self.reports, [])
 
+    # 2026-10-16 00:15 KST: a public same-origin script uses the actual backend allowlist.
+    def test_browser_keyboard_table_matches_hid_backend(self):
+        from zero2w_kvm.hid import KEY_CODES
+        code, headers, body = self.request("/keyboard-map.js")
+        self.assertEqual(code, 200)
+        self.assertIn("text/javascript", headers["Content-Type"])
+        mapping = json.loads(body.decode().split("Object.freeze(", 1)[1].rsplit(");", 1)[0])
+        self.assertEqual(mapping, KEY_CODES)
+        self.assertEqual(mapping["Lang1"], 0x90)
+
+    def test_clipboard_helper_token_cannot_control_usb_or_read_console(self):
+        agent = {"Authorization": "Bearer " + self.app.clipboard.agent_token}
+        self.assertEqual(self.request("/api/clipboard/agent/poll")[0], 401)
+        self.assertEqual(self.request("/api/clipboard/agent/poll", headers=self.auth())[0], 401)
+        self.assertEqual(self.request("/api/clipboard/agent/poll", headers=agent)[0], 200)
+        self.assertEqual(self.request("/api/status", headers=agent)[0], 401)
+        self.assertEqual(self.request("/api/input", {"type": "tap", "codes": ["KeyA"]}, agent)[0], 401)
+        self.assertEqual(self.reports, [])
+
+    def test_explicit_clipboard_copy_flow_and_owner_authentication(self):
+        agent = {"Authorization": "Bearer " + self.app.clipboard.agent_token}
+        self.request("/api/clipboard/agent/poll", headers=agent)
+        self.assertEqual(self.request("/api/clipboard/copy", {}, self.auth())[0], 409)
+        self.app.controller.owner = "bearer"
+        code, _, body = self.request("/api/clipboard/copy", {}, self.auth())
+        self.assertEqual(code, 200)
+        job = json.loads(body)["job"]
+        self.assertEqual(json.loads(self.request("/api/clipboard/agent/poll", headers=agent)[2])["job"], job)
+        content = "테스트\r\nwith spaces  😀"
+        self.assertEqual(self.request("/api/clipboard/agent/result", {"job": job, "text": content}, agent)[0], 200)
+        self.assertEqual(self.request("/api/clipboard/result?job=" + job)[0], 401)
+        result = json.loads(self.request("/api/clipboard/result?job=" + job, headers=self.auth())[2])
+        self.assertEqual(result["text"], content)
+        self.assertEqual(self.request("/api/clipboard/result?job=" + job, headers=self.auth())[0], 404)
+        self.assertEqual(self.reports, [])
+
+    def test_windows_helper_is_paired_only_for_authenticated_downloads(self):
+        self.assertEqual(self.request("/api/clipboard/windows-helper.ps1")[0], 401)
+        code, headers, body = self.request("/api/clipboard/windows-helper.ps1", headers=self.auth())
+        self.assertEqual(code, 200)
+        self.assertIn(b"http://127.0.0.1:", body)
+        self.assertIn(self.app.clipboard.agent_token.encode(), body)
+        self.assertNotIn(TOKEN.encode(), body)
+        self.assertNotIn(b"__KVM_AGENT_TOKEN__", body)
+        self.assertEqual(headers["Cache-Control"], "no-store")
+
     # 2026-10-11 15:27 KST: the key planner is available with the normal console assets.
     def test_text_planner_asset_is_served_as_javascript(self):
         code, headers, body = self.request("/text-entry.js")

@@ -1,10 +1,44 @@
 """2026-10-09 22:35 KST: CodexCode - wire bytes, isolation and recovery tests."""
 import struct
 import unittest
-from zero2w_kvm.hid import Controller, ControlBusyError, USBDisconnectedError, keyboard_report, mouse_reports
+from zero2w_kvm.hid import Controller, ControlBusyError, USBDisconnectedError, keyboard_report, mouse_reports, KEYS, KEYBOARD_DESCRIPTOR
 
 
 class HIDTests(unittest.TestCase):
+    # 2026-10-16 00:15 KST: language keys must fit both the wire report and its HID descriptor.
+    def test_international_function_and_keypad_usage_numbers(self):
+        for code, usage in {"Lang1": 0x90, "Lang2": 0x91, "IntlRo": 0x87, "IntlYen": 0x89,
+                            "KanaMode": 0x88, "Convert": 0x8A, "NonConvert": 0x8B,
+                            "F13": 0x68, "F24": 0x73, "NumpadEqual": 0x67,
+                            "NumpadComma": 0x85, "NumpadClear": 0xD8}.items():
+            self.assertEqual(keyboard_report([code]), bytes([0, 0, usage, 0, 0, 0, 0, 0]))
+
+    def test_descriptor_array_covers_every_supported_non_modifier_usage(self):
+        fields, arrays, offset = {}, [], 0
+        while offset < len(KEYBOARD_DESCRIPTOR):
+            prefix = KEYBOARD_DESCRIPTOR[offset]
+            length = (0, 1, 2, 4)[prefix & 3]
+            value = int.from_bytes(KEYBOARD_DESCRIPTOR[offset + 1:offset + 1 + length], "little")
+            tag = prefix & 0xFC
+            if tag == 0x80 and value == 0:
+                arrays.append((fields[0x24], fields[0x28], fields[0x74], fields[0x94]))
+            fields[tag] = value
+            offset += length + 1
+        self.assertEqual(len(arrays), 1)
+        logical, usage, bits, count = arrays[0]
+        self.assertEqual((bits, count), (8, 6))
+        self.assertTrue(all(0 < value <= min(logical, usage) for value in KEYS.values()))
+
+    def test_language_tap_restores_other_held_keys_and_validates_restore_before_writing(self):
+        self.controller.update({"type": "tap", "codes": ["ShiftLeft", "KeyA", "Lang1"],
+                                "restore_codes": ["ShiftLeft", "KeyA"]}, "a")
+        self.assertEqual(self.reports[-1][1], keyboard_report(["ShiftLeft", "KeyA"]))
+        self.assertEqual(self.controller.keyboard_state, self.reports[-1][1])
+        before = list(self.reports)
+        with self.assertRaises(ValueError):
+            self.controller.update({"type": "tap", "codes": ["Lang1"], "restore_codes": ["Invalid"]}, "a")
+        self.assertEqual(self.reports, before)
+
     def setUp(self):
         self.reports = []
         self.now = 0

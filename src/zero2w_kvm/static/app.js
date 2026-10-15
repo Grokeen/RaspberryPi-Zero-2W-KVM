@@ -15,17 +15,88 @@ let usbConnected = false;
 // 2026-10-11 15:27 KST: CodexCode - cancellable text typing through existing USB tap reports.
 let typing = false, typingCancelled = false;
 const usbHint = "USB 대상 컴퓨터의 연결이 인식되지 않았습니다. Pi의 USB 포트를 데이터 케이블로 연결하고 대상 컴퓨터를 켜세요.";
-const known = new Set([
-  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(v => `Key${v}`),
-  ...Array.from({length: 10}, (_, i) => `Digit${i}`),
-  ...Array.from({length: 10}, (_, i) => `Numpad${i}`),
-  ...Array.from({length: 12}, (_, i) => `F${i + 1}`),
-  "ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "AltLeft", "AltRight", "MetaLeft", "MetaRight",
-  "Enter", "Escape", "Backspace", "Tab", "Space", "Minus", "Equal", "BracketLeft", "BracketRight", "Backslash",
-  "Semicolon", "Quote", "Backquote", "Comma", "Period", "Slash", "CapsLock", "PrintScreen", "ScrollLock", "Pause",
-  "Insert", "Home", "PageUp", "Delete", "End", "PageDown", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp",
-  "NumLock", "NumpadDivide", "NumpadMultiply", "NumpadSubtract", "NumpadAdd", "NumpadEnter", "NumpadDecimal", "IntlBackslash", "ContextMenu"
-]);
+// 2026-10-16 00:15 KST: use the server's HID table, including Korean and international keys.
+const known = new Set(Object.keys(KVMKeyMap));
+const momentaryKeys = new Set(["Lang1", "Lang2", "PrintScreen", "Pause"]);
+const pulsedKeys = new Set();
+let keyboardLockGeneration = 0, keyboardLocked = false, keyboardLockQueue = Promise.resolve();
+let clipboardGeneration = 0, clipboardCopyTask = Promise.resolve();
+const releaseHint = "제어 해제·입력 중지: Ctrl+Alt+Shift를 함께 누르세요. Esc는 대상 컴퓨터에 전달합니다.";
+function releaseKeyboardLock() {
+  keyboardLockGeneration++;
+  keyboardLocked = false;
+  try { navigator.keyboard?.unlock?.(); } catch {}
+}
+function requestKeyboardLock() {
+  if (!capturing || !isVideoFullscreen() || typeof navigator.keyboard?.lock !== "function") return Promise.resolve();
+  const generation = keyboardLockGeneration;
+  keyboardLockQueue = keyboardLockQueue.then(async () => {
+    if (generation !== keyboardLockGeneration || !capturing || !isVideoFullscreen()) return;
+    try {
+      await navigator.keyboard.lock();
+      if (generation !== keyboardLockGeneration || !capturing || !isVideoFullscreen()) {
+        navigator.keyboard.unlock(); return;
+      }
+      keyboardLocked = true;
+      $("keyboard-help").textContent = `${releaseHint} 키보드 잠금이 적용되었습니다. Esc를 길게 누르는 브라우저 비상 해제는 유지됩니다.`;
+    } catch {
+      $("keyboard-help").textContent = `${releaseHint} Esc·시스템 단축키를 보내려면 전체 화면에서 브라우저의 키보드 잠금을 허용하세요.`;
+    }
+  });
+  return keyboardLockQueue;
+}
+function physicalCode(event) {
+  if (known.has(event.code)) return event.code;
+  const aliases = {HangulMode: "Lang1", Hangul: "Lang1", HanjaMode: "Lang2", Hanja: "Lang2",
+    KanaMode: "KanaMode", KanjiMode: "Lang2", Esc: "Escape", Del: "Delete", Spacebar: "Space"};
+  if (aliases[event.key]) return aliases[event.key];
+  if (event.keyCode === 21) return "Lang1";
+  if (event.keyCode === 25) return "Lang2";
+  if (event.location === 3) {
+    const keypad = {Enter: "NumpadEnter", Decimal: "NumpadDecimal", Delete: "NumpadDecimal",
+      Insert: "Numpad0", End: "Numpad1", ArrowDown: "Numpad2", PageDown: "Numpad3",
+      ArrowLeft: "Numpad4", Clear: "Numpad5", ArrowRight: "Numpad6", Home: "Numpad7",
+      ArrowUp: "Numpad8", PageUp: "Numpad9"};
+    if (keypad[event.key]) return keypad[event.key];
+  }
+  return known.has(event.key) ? event.key : null;
+}
+function keyboardCodes(values = [...keys]) {
+  const modifiers = values.filter(code => KVMKeyMap[code] >= 0xE0);
+  return [...modifiers, ...values.filter(code => KVMKeyMap[code] < 0xE0).slice(0, 6)];
+}
+function isReleaseChord(event, code) {
+  return /^(Control|Alt|Shift)(Left|Right)$/.test(code || "") &&
+    event.ctrlKey && event.altKey && event.shiftKey && !event.getModifierState?.("AltGraph");
+}
+// 2026-10-16 00:25 KST: retrieve clipboard text only after an explicitly captured Ctrl+C.
+async function copyTargetClipboard() {
+  const generation = ++clipboardGeneration;
+  if (typeof navigator.clipboard?.writeText !== "function") {
+    $("clipboard-status").textContent = "이 PC의 localhost 콘솔에서 브라우저 클립보드를 사용할 수 있습니다."; return;
+  }
+  $("clipboard-status").textContent = "대상 Windows에서 복사한 텍스트를 가져오는 중…";
+  try {
+    const {job} = await api("/api/clipboard/copy", {});
+    const deadline = Date.now() + 10000;
+    while (generation === clipboardGeneration && authenticated && Date.now() < deadline) {
+      const result = await api(`/api/clipboard/result?job=${encodeURIComponent(job)}`);
+      if (generation !== clipboardGeneration || !authenticated) return;
+      if (result.ready) {
+        if (result.error) throw new Error(({no_text: "대상 클립보드에 텍스트가 없습니다. 이미지·파일은 지원하지 않습니다.",
+          too_large: "클립보드 텍스트는 최대 64 KiB까지 가져올 수 있습니다.", busy: "대상 클립보드가 사용 중입니다. 다시 복사하세요."})[result.error] || "클립보드를 읽지 못했습니다.");
+        await navigator.clipboard.writeText(result.text);
+        if (generation === clipboardGeneration) $("clipboard-status").textContent = "이 PC 클립보드에 복사했습니다. Ctrl+Alt+Shift로 제어를 해제한 뒤 Ctrl+V로 붙여 넣으세요.";
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+    if (generation === clipboardGeneration) throw new Error("대상 클립보드 응답 시간이 초과되었습니다.");
+  } catch (error) {
+    if (generation === clipboardGeneration) $("clipboard-status").textContent = error.name === "NotAllowedError"
+      ? "이 PC 클립보드 쓰기가 차단되었습니다. 브라우저 사이트 권한을 확인하고 다시 Ctrl+C를 누르세요." : error.message;
+  }
+}
 
 function notice(message) {
   $("notice").textContent = $("login-notice").textContent = message;
@@ -228,7 +299,7 @@ async function exitVideoFullscreen() {
   if (!isVideoFullscreen()) return;
   stopCapture();
   try { await document.exitFullscreen(); }
-  catch { notice("전체 화면을 종료하지 못했습니다. Esc를 눌러 종료하세요."); }
+  catch { notice("전체 화면을 종료하지 못했습니다. 브라우저의 전체 화면 종료 기능을 사용하세요."); }
   finally { fullscreenUI(); }
 }
 $("video-fullscreen").addEventListener("click", async () => {
@@ -268,6 +339,7 @@ function usbControls() {
 }
 function showLogin() {
   authenticated = false;
+  clipboardGeneration++;
   stopLocalVideo();
   cancelTextEntry();
   $("type-text").value = "";
@@ -358,7 +430,8 @@ function captureUI() {
 function stopCapture() {
   const wasCapturing = capturing;
   capturing = keyboardOnly = false;
-  keys.clear(); dx = dy = wheel = buttons = 0; mouseDirty = false;
+  keys.clear(); pulsedKeys.clear(); dx = dy = wheel = buttons = 0; mouseDirty = false;
+  releaseKeyboardLock();
   if (document.pointerLockElement) document.exitPointerLock();
   captureUI();
   if (wasCapturing && authenticated) input({type: "release"});
@@ -381,6 +454,7 @@ $("capture").addEventListener("click", () => {
   if (capturing) { stopCapture(); return; }
   capturing = keyboardOnly = true;
   $("screen").focus(); captureUI(); input({type: "heartbeat"});
+  requestKeyboardLock();
 });
 $("screen").addEventListener("click", async event => {
   if (typing) return;
@@ -395,6 +469,7 @@ document.addEventListener("pointerlockchange", () => {
     if (!usbConnected || typing) { document.exitPointerLock(); return; }
     capturing = true; keyboardOnly = false; $("screen").focus();
     captureUI(); input({type: "heartbeat"});
+    requestKeyboardLock();
   } else if (!keyboardOnly) stopCapture();
 });
 document.addEventListener("pointerlockerror", () => notice("브라우저가 마우스 캡처를 허용하지 않았습니다."));
@@ -405,26 +480,40 @@ function syncModifiers(event) {
     ["altKey", "AltLeft", "AltRight"], ["metaKey", "MetaLeft", "MetaRight"]
   ]) {
     if (typeof event[flag] !== "boolean") continue;
+    // AltGr may expose a synthetic Ctrl flag; do not invent a physical Ctrl key.
+    if (flag === "ctrlKey" && (event.key === "AltGraph" || event.getModifierState?.("AltGraph"))) continue;
     if (!event[flag]) { keys.delete(left); keys.delete(right); }
     else if (!keys.has(left) && !keys.has(right)) keys.add(left);
   }
 }
 for (const type of ["keydown", "keyup"]) document.addEventListener(type, event => {
-  if (typing) {
-    if (type === "keydown" && event.code === "Escape") { event.preventDefault(); cancelTextEntry(); }
-    return;
+  const code = physicalCode(event);
+  if (type === "keydown" && isReleaseChord(event, code) && (capturing || typing || isVideoFullscreen())) {
+    event.preventDefault(); cancelTextEntry(); stopCapture(); exitVideoFullscreen(); return;
   }
+  if (typing) return;
   if (!capturing) return;
   event.preventDefault();
-  if (event.code === "Escape") { stopCapture(); exitVideoFullscreen(); return; }
-  if (!known.has(event.code)) { notice(`지원하지 않는 키: ${event.code}`); return; }
+  if (!code) { $("keyboard-help").textContent = `${releaseHint} 이 키는 브라우저에서 USB 키 코드로 식별되지 않습니다.`; return; }
+  if (momentaryKeys.has(code)) {
+    syncModifiers(event);
+    if (type === "keyup" && pulsedKeys.delete(code)) return;
+    if (type === "keydown") { if (event.repeat) return; pulsedKeys.add(code); }
+    const restore = keyboardCodes();
+    input({type: "tap", codes: keyboardCodes([code, ...keys]), restore_codes: restore});
+    return;
+  }
   const previous = [...keys].join("\0");
   if (type === "keydown") {
-    keys.add(event.code);
-  } else keys.delete(event.code);
+    keys.add(code);
+  } else keys.delete(code);
   syncModifiers(event);
   if (type === "keydown" && event.repeat && previous === [...keys].join("\0")) return;
-  input({type: "keyboard", codes: [...keys]});
+  const copying = type === "keydown" && code === "KeyC" && !event.repeat && event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+  const sent = input({type: "keyboard", codes: keyboardCodes()}, copying);
+  if (copying) {
+    clipboardCopyTask = sent.then(() => { if (authenticated) return copyTargetClipboard(); }).catch(() => {});
+  }
 }, true);
 document.addEventListener("mousemove", event => {
   if (document.pointerLockElement !== $("screen")) return;
@@ -473,6 +562,7 @@ document.querySelectorAll("[data-keys]").forEach(button => button.addEventListen
 window.addEventListener("blur", () => { cancelTextEntry(); stopCapture(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) { cancelTextEntry(); stopCapture(); } });
 window.addEventListener("pagehide", () => {
+  clipboardGeneration++;
   cancelTextEntry();
   stopLocalVideo();
   if (authenticated) fetch("/api/input", {method: "POST", credentials: "same-origin", keepalive: true,
@@ -493,6 +583,7 @@ async function status() {
     $("connection").classList.add("ok");
     $("usb-status").textContent = !ready ? "USB gadget 설정 필요" : connected ? "키보드 · 마우스 연결됨" : `장치 준비됨 · 대상 USB 연결 대기 (${result.hid.usb_state || "unknown"})`;
     $("usb-guide").hidden = usbConnected;
+    $("clipboard-agent-status").textContent = result.clipboard?.agent_ready ? "대상 Windows 도우미 연결됨 · Ctrl+C로 이 PC에 텍스트 복사" : "대상 Windows 도우미 연결 대기";
     if (videoSource === null) changeVideoSource(result.video.enabled ? "pi" : "local");
     localVideoControls();
     if (videoSource === "local") { fullscreenUI(); return; }

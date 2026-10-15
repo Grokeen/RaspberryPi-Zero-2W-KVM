@@ -14,11 +14,12 @@ import secrets
 import signal
 import threading
 import time
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 from . import __version__
-from .hid import Controller, ControlBusyError, USBDisconnectedError
+from .hid import Controller, ControlBusyError, USBDisconnectedError, KEY_CODES
 from .video import Video
 from .desktop import PiDesktop, websocket_key
+from .clipboard import ClipboardBridge
 
 LOG = logging.getLogger("zero2w-kvm")
 STATIC = Path(__file__).with_name("static")
@@ -32,6 +33,7 @@ class Application:
         self.controller = controller or Controller()
         self.video = video or Video()
         self.desktop = desktop or PiDesktop()
+        self.clipboard = ClipboardBridge(token)
         self.sessions = {}
         self.attempts = defaultdict(list)
         self.lock = threading.Lock()
@@ -71,6 +73,7 @@ class Application:
             return session if self.sessions.get(session, 0) > time.monotonic() else None
 
     def logout(self, identity):
+        self.clipboard.cancel(identity)
         with self.lock:
             self.sessions.pop(identity, None)
         with self.controller.lock:
@@ -83,6 +86,7 @@ class Application:
 
     def watchdog(self):
         while not self.closed.wait(0.5):
+            self.clipboard.expire()
             try:
                 self.controller.expire()
             except OSError as error:
@@ -163,14 +167,14 @@ class Handler(BaseHTTPRequestHandler):
             return True  # Non-browser clients must still authenticate.
         return origin in (f"http://{self.headers.get('Host')}", f"https://{self.headers.get('Host')}")
 
-    def _body(self):
+    def _body(self, maximum=8192):
         if self.headers.get("Transfer-Encoding"):
             raise ValueError("Chunked request bodies are not supported")
         if self.headers.get_content_type() != "application/json":
             raise ValueError("Content-Type must be application/json")
         length = int(self.headers.get("Content-Length", "0"))
-        if not 0 < length <= 8192:
-            raise ValueError("JSON body must be 1..8192 bytes")
+        if not 0 < length <= maximum:
+            raise ValueError(f"JSON body must be 1..{maximum} bytes")
         body = json.loads(self.rfile.read(length))
         if not isinstance(body, dict):
             raise ValueError("JSON body must be an object")
@@ -178,6 +182,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        # 2026-10-16 00:25 KST: the scoped helper token cannot authenticate as a console user.
+        if path == "/api/clipboard/agent/poll":
+            if not self._clipboard_agent_ok():
+                self._json(401, {"error": "Clipboard helper authentication required"}); return
+            self._json(200, {"job": self.server.app.clipboard.poll()}); return
+        # 2026-10-16 00:15 KST: serve the exact HID physical-code allowlist to the browser.
+        if path == "/keyboard-map.js":
+            body = ("globalThis.KVMKeyMap = Object.freeze(" + json.dumps(KEY_CODES) + ");\n").encode()
+            self._headers(200, "text/javascript; charset=utf-8", len(body))
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                pass
+            return
         assets = {"/": ("index.html", "text/html; charset=utf-8"),
                   "/app.js": ("app.js", "text/javascript; charset=utf-8"),
                   # 2026-10-11 15:27 KST: validated USB text-to-key planning in the browser.
@@ -192,7 +210,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._headers(200, mime, len(body))
                 self.wfile.write(body)
                 return
-            if path not in ("/api/status", "/api/video", "/api/pi/status", "/api/pi/vnc") and not path.startswith("/novnc/"):
+            if path not in ("/api/status", "/api/video", "/api/pi/status", "/api/pi/vnc", "/api/clipboard/result", "/api/clipboard/windows-helper.ps1") and not path.startswith("/novnc/"):
                 self._json(404, {"error": "Not found"})
                 return
             identity = self.server.app.identity(self.headers)
@@ -201,7 +219,22 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/status":
                 self._json(200, {"version": __version__, "hid": self.server.app.controller.status(),
-                                 "video": self.server.app.video.status()})
+                                 "video": self.server.app.video.status(), "clipboard": self.server.app.clipboard.status()})
+            elif path == "/api/clipboard/windows-helper.ps1":
+                host = self.connection.getsockname()[0]
+                if ":" in host:
+                    host = f"[{host}]"
+                address = f"http://{host}:{self.server.server_port}"
+                body = (STATIC / "windows-clipboard-helper.ps1").read_text(encoding="utf-8")
+                body = body.replace("__KVM_SERVER__", address).replace("__KVM_AGENT_TOKEN__", self.server.app.clipboard.agent_token).encode("utf-8-sig")
+                self._headers(200, "application/octet-stream", len(body))
+                self.wfile.write(body)
+            elif path == "/api/clipboard/result":
+                job = parse_qs(urlsplit(self.path).query).get("job", [""])[0]
+                try:
+                    self._json(200, self.server.app.clipboard.result(job, identity))
+                except KeyError:
+                    self._json(404, {"error": "Clipboard request expired"})
             elif path == "/api/video":
                 self._video(identity)
             elif path == "/api/pi/status":
@@ -270,6 +303,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
+        if path == "/api/clipboard/agent/result":
+            if not self._clipboard_agent_ok():
+                self._json(401, {"error": "Clipboard helper authentication required"}); return
+            try:
+                body = self._body(512 * 1024)
+                self.server.app.clipboard.complete(body.get("job"), body.get("text"), body.get("error"))
+                self._json(200, {"ok": True})
+            except KeyError:
+                self._json(404, {"error": "Clipboard request expired"})
+            except (ValueError, UnicodeError):
+                self._json(400, {"error": "Invalid clipboard response"})
+            return
         try:
             if not self._origin_ok():
                 self._json(403, {"error": "Cross-origin requests are forbidden"})
@@ -294,6 +339,15 @@ class Handler(BaseHTTPRequestHandler):
                     self._input_failure(error)
                     return
                 self._json(200, {"ok": True})
+            elif path == "/api/clipboard/copy":
+                with self.server.app.controller.lock:
+                    if self.server.app.controller.owner != identity:
+                        self._json(409, {"error": "키보드 제어를 시작한 뒤 Ctrl+C를 누르세요."}); return
+                    try:
+                        job = self.server.app.clipboard.create(identity)
+                    except ConnectionError as error:
+                        self._json(503, {"error": str(error)}); return
+                self._json(200, {"job": job})
             elif path == "/api/logout":
                 self.server.app.logout(identity)
                 self._json(200, {"ok": True}, "kvm_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
@@ -308,6 +362,10 @@ class Handler(BaseHTTPRequestHandler):
             pass
         except OSError as error:
             self._json(503, {"error": f"USB input unavailable: {error}"})
+
+    def _clipboard_agent_ok(self):
+        authorization = self.headers.get("Authorization", "")
+        return self._origin_ok() and authorization.startswith("Bearer ") and self.server.app.clipboard.accepts_agent(authorization[7:])
 
 
 def main():

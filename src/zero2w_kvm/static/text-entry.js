@@ -20,7 +20,8 @@
   const jamo = {};
   [..."ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"].forEach((letter, index) => { jamo[letter] = initials[index]; });
   [..."ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅛㅜㅠㅡㅣ"].forEach((letter, index) => { jamo[letter] = ["k", "o", "i", "O", "j", "p", "u", "P", "h", "y", "n", "b", "m", "l"][index]; });
-  const imeKeys = new Set(["AltRight", "ControlLeft,Space", "ShiftLeft,Space", "MetaLeft,Space"]);
+  // 2026-10-16 00:15 KST: support dedicated Korean keyboards as well as 101-key AltRight.
+  const imeKeys = new Set(["AltRight", "Lang1", "ControlLeft,Space", "ShiftLeft,Space", "MetaLeft,Space"]);
   function ascii(letter, layout = "us") {
     if (layout === "gb" && british[letter]) return [...british[letter]];
     if (/^[a-z]$/.test(letter)) return [`Key${letter.toUpperCase()}`];
