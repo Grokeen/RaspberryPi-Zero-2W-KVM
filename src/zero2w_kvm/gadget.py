@@ -45,12 +45,15 @@ def start():
             if (gadget / "UDC").read_text().strip() or list((gadget / "functions").glob("hid.*")):
                 raise RuntimeError(f"USB/HID controller already belongs to {gadget.name}; refusing to replace it")
     if GADGET.exists() and (GADGET / "UDC").read_text().strip():
-        return
+        # 2026-10-16 00:15 KST: re-enumerate when an installed report descriptor changed.
+        if ((GADGET / "functions/hid.usb0/report_desc").read_bytes() == KEYBOARD_DESCRIPTOR
+                and (GADGET / "functions/hid.usb1/report_desc").read_bytes() == MOUSE_DESCRIPTOR):
+            return
     stop()
     GADGET.mkdir()
     # Linux Foundation example VID/PID: prototype use, not an assigned production USB identity.
     for name, value in {"idVendor": "0x1d6b", "idProduct": "0x0104",
-                        "bcdDevice": "0x0100", "bcdUSB": "0x0200"}.items():
+                        "bcdDevice": "0x0101", "bcdUSB": "0x0200"}.items():
         put(GADGET / name, value)
     strings = GADGET / "strings/0x409"
     strings.mkdir()

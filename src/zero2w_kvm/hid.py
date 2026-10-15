@@ -1,6 +1,7 @@
 """2026-10-09 22:22 KST: CodexCode - HID reports, bounded I/O and stuck-key recovery."""
 import os
 import errno
+import json
 import select
 import struct
 import threading
@@ -10,35 +11,19 @@ from pathlib import Path
 # Standard boot keyboard (8 bytes) and relative mouse with wheel (4 bytes).
 KEYBOARD_DESCRIPTOR = bytes.fromhex(
     "05010906a101050719e029e715002501750195088102950175088103"
-    "9505750105081901290591029501750391039506750815002565"
-    "0507190029658100c0"
+    # 2026-10-16 00:15 KST: include international/language and extended keypad usages through 0xDD.
+    "95057501050819012905910295017503910395067508150026dd00"
+    "050719002add008100c0"
 )
 MOUSE_DESCRIPTOR = bytes.fromhex(
     "05010902a1010901a10005091901290315002501950375018102"
     "95017505810305010930093109381581257f750895038106c0c0"
 )
-MODIFIERS = {code: 1 << index for index, code in enumerate([
-    "ControlLeft", "ShiftLeft", "AltLeft", "MetaLeft",
-    "ControlRight", "ShiftRight", "AltRight", "MetaRight",
-])}
-KEYS = {f"Key{chr(65 + i)}": 4 + i for i in range(26)}
-KEYS.update({f"Digit{n}": 29 + n for n in range(1, 10)})
-KEYS.update({f"F{n}": 57 + n for n in range(1, 13)})
-KEYS.update({
-    "Digit0": 39, "Enter": 40, "Escape": 41, "Backspace": 42,
-    "Tab": 43, "Space": 44, "Minus": 45, "Equal": 46,
-    "BracketLeft": 47, "BracketRight": 48, "Backslash": 49,
-    "Semicolon": 51, "Quote": 52, "Backquote": 53, "Comma": 54,
-    "Period": 55, "Slash": 56, "CapsLock": 57, "PrintScreen": 70,
-    "ScrollLock": 71, "Pause": 72, "Insert": 73, "Home": 74,
-    "PageUp": 75, "Delete": 76, "End": 77, "PageDown": 78,
-    "ArrowRight": 79, "ArrowLeft": 80, "ArrowDown": 81, "ArrowUp": 82,
-    "NumLock": 83, "NumpadDivide": 84, "NumpadMultiply": 85,
-    "NumpadSubtract": 86, "NumpadAdd": 87, "NumpadEnter": 88,
-    "Numpad0": 98, "NumpadDecimal": 99, "IntlBackslash": 100,
-    "ContextMenu": 101,
-})
-KEYS.update({f"Numpad{n}": 88 + n for n in range(1, 10)})
+# 2026-10-16 00:15 KST: one physical-code table for the browser and HID reports.
+# Usage numbers follow USB HID and Chromium's public DOM code table.
+KEY_CODES = json.loads((Path(__file__).with_name("static") / "keyboard-map.json").read_text(encoding="utf-8"))
+MODIFIERS = {code: 1 << (usage - 0xE0) for code, usage in KEY_CODES.items() if 0xE0 <= usage <= 0xE7}
+KEYS = {code: usage for code, usage in KEY_CODES.items() if usage < 0xE0}
 
 
 def integer(value, name, minimum, maximum):
@@ -153,6 +138,7 @@ class Controller:
         # Validate the complete event before changing any state or writing reports.
         if kind in ("keyboard", "tap"):
             report = keyboard_report(event.get("codes"))
+            restore = keyboard_report(event.get("restore_codes", [])) if kind == "tap" else None
         elif kind == "mouse":
             reports = mouse_reports(event.get("x", 0), event.get("y", 0),
                                     event.get("buttons", 0), event.get("wheel", 0))
@@ -174,8 +160,8 @@ class Controller:
                     self._write(self.keyboard, report)
                     time.sleep(0.035)
                 finally:
-                    self._write(self.keyboard, bytes(8))
-                    self.keyboard_state = bytes(8)
+                    self._write(self.keyboard, restore)
+                    self.keyboard_state = restore
             elif kind == "mouse":
                 self.buttons = event.get("buttons", 0)
                 for report in reports:

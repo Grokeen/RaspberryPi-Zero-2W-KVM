@@ -86,6 +86,9 @@ footer { padding-top: 0; color: #7d90aa; font-size: 12px; }
 .kvm-page .eyebrow { font-size: 9px; }
 .kvm-page .login { margin: 35px auto; width: calc(100% - 40px); }
 #login-notice { color: #ffc88c; font-size: 13px; }
+/* 2026-10-16 00:25 KST: clipboard feedback contains status only, never copied content. */
+#clipboard-status { color: #75dfbb; font-size: 12px; overflow-wrap: anywhere; }
+.session-settings code { overflow-wrap: anywhere; }
 .kvm-page > main { width: 100%; max-width: none; padding: 0; flex: 1; min-height: 0; overflow: auto; }
 .kvm-page > footer { width: 100%; max-width: none; padding: 7px 20px; font-size: 11px; flex: 0 0 auto; }
 #console-panel { height: 100%; }

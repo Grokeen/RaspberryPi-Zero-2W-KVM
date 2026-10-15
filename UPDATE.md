@@ -260,3 +260,16 @@
 - 패키지/두 화면 버전을 0.5.0으로 갱신했습니다. Python 47개와 Node 43개, 합계 90개 검사 통과. 독립된 테스트용 페이지를 Chrome headless로 렌더링하고 패널 열기/접기, PC 캡처 설정, 원본 1920×1080 스크롤 및 좁은 화면 배치를 이미지와 치수로 검증했습니다. 테스트 화면은 샘플 영상이며 실제 카메라/HID에는 접근하지 않았습니다.
 - 로컬 README의 사용자 편집을 보존하고 공개 문서 복사본으로 v0.5.0 wheel/source archive를 빌드했습니다. Pi에서도 Python 47개가 통과한 뒤 기존 런타임과 편집용 소스를 백업하고 웹 런타임을 반영했습니다. 서비스 active 및 USB configured를 유지합니다.
 - 2026-10-16 00:02 KST: 설치본·Pi 편집용 소스·로컬 런타임 15개 파일의 바이트 일치와 실제 localhost HTML/JS/CSS, 인증/상태/로그아웃, 카메라 정책, noVNC 자산 및 외부 Host/Origin 차단을 검증했습니다. API 버전 0.5.0을 확인했습니다. 로컬 렌더링은 샘플로 확인했으며 실제 GC553Pro 영상은 기존 v0.4.0에 대한 사용자 확인입니다.
+
+## 2026-10-16 00:38 KST — CodexCode — USB 키 입력 보완 및 Windows 클립보드 가져오기
+
+- v0.6.0: 한/영·한자·국제 배열·확장 키패드·F13–F24 등 154개 물리 키 코드를 공통 테이블로 처리합니다. 기존 USB descriptor의 최대 usage 0x65가 언어 키를 제외하던 문제를 0xDD까지 확장했고 장치 revision을 0x0101로 변경했습니다. 설치 시 USB gadget 재연결이 필요합니다.
+- 한/영·한자·PrtSc·Pause의 keyup 누락에 대응하는 tap 및 modifier 복구, Unidentified/legacy 한글 키 식별, NumLock 해제 키패드, AltGraph와 6키 초과 입력을 보완했습니다. 대상의 실제 OS/입력기 설정과 브라우저에서 가로채는 키는 환경에 따라 다릅니다.
+- 제어 해제/입력 중지/전체 화면 종료를 Ctrl+Alt+Shift 조합으로 변경했습니다. Esc는 대상에 전달하며 전체 화면에서 지원 브라우저의 Keyboard Lock 권한을 요청합니다. 긴 Esc 브라우저 비상 해제와 OS가 가로채는 Fn 등의 한계는 안내 문구에 기록했습니다. 해제키 설정 UI는 추가하지 않았습니다.
+- 대상 Windows → 현재 PC의 텍스트 클립보드 브리지를 추가했습니다. KVM Ctrl+C USB 보고 성공 후 명시적 복사 작업을 생성하고 대상 Windows STA PowerShell 도우미가 결과를 전달하면 localhost 브라우저 클립보드에 기록합니다. 제어 해제 후에도 이미 요청한 복사를 완료할 수 있습니다.
+- 도우미 다운로드는 콘솔 인증이 필요하고 도우미는 입력 제어에 사용할 수 없는 별도 HMAC 인증을 사용합니다. 텍스트 64 KiB, 단일 소유자/단일 사용 결과, 10초 만료, 로그아웃 취소, 클립보드 이력 미보관, 오류 시 기존 PC 클립보드 보존을 적용했습니다. 대상 Windows에서 도우미를 실행해야 하며 이미지/파일/서식은 지원하지 않습니다.
+- 로컬 Python 57개 + Node 54개, 총 111개 자동 검증을 통과했습니다. 모든 물리 키의 보고 범위, modifier 유지/누락 이벤트/동시 입력/해제 조합/키보드 잠금 경합, 클립보드 UTF-8/인증 범위/소유자/만료/권한 거부를 검증했습니다. PowerShell AST 구문 검사와 데스크톱/모바일 5가지 화면 렌더링도 통과했습니다.
+- 실제 대상 Windows에 접속할 수 없어 도우미 설치와 대상 앱 → 현재 PC의 실제 클립보드 왕복, 모든 실물 키의 OS별 동작은 직접 검증하지 않았습니다. 도우미를 조종하는 PC에서 실행하여 다른 클립보드를 읽는 테스트는 하지 않았습니다. Pi 배포/최종 패키지/GitHub 결과는 후속 기록에 추가합니다.
+- 키 코드 근거: https://www.w3.org/TR/uievents-code/, https://chromium.googlesource.com/chromium/src/+/main/ui/events/keycodes/dom/dom_code_data.inc, https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock
+- Pi에서 Python 57개 통과 후 기존 런타임과 편집용 소스를 백업하고 v0.6.0을 설치했습니다. gadget 재연결 후 실제 keyboard/mouse report descriptor 바이트, keyboard report 8바이트, bcdDevice 0x0101, USB configured 및 web/gadget active를 확인했습니다.
+- 설치본·Pi 편집용 소스·로컬 런타임 18개 파일이 일치합니다. 실제 localhost HTML/JS/CSS와 154키 공통 테이블, 인증/버전/상태/로그아웃, 도우미 인증 다운로드/주 콘솔 토큰 미포함, noVNC 자산, 외부 Host/Origin 차단을 검증했습니다. 실제 대상 키나 클립보드 내용은 검증 중 읽거나 전송하지 않았습니다.

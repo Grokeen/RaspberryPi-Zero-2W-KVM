@@ -8,6 +8,7 @@ const path = require("node:path");
 const source = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/app.js"), "utf8");
 // 2026-10-11 15:27 KST: CodexCode - exercise textbox typing with the real text planner.
 const textSource = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/text-entry.js"), "utf8");
+const keyMap = JSON.parse(fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/keyboard-map.json"), "utf8"));
 
 // 2026-10-15 23:10 KST: CodexCode - exercise device selection and capture cleanup races.
 function captureFixture(getUserMedia) {
@@ -144,10 +145,16 @@ function fixture(usbState = "configured", options = {}) {
   document.exitFullscreen = async () => { document.fullscreenElement = null; await document.fire("fullscreenchange"); };
   const window = new Element(), events = [], intervals = [];
   window.isSecureContext = Boolean(options.secureContext);
-  const navigator = {mediaDevices: options.mediaDevices};
-  const context = vm.createContext({document, window, navigator, AbortSignal, Promise, Set, setTimeout,
+  const navigator = {mediaDevices: options.mediaDevices, keyboard: options.keyboard, clipboard: options.clipboard};
+  const context = vm.createContext({document, window, navigator, KVMKeyMap: keyMap, AbortSignal, Promise, Set, setTimeout,
     setInterval: callback => intervals.push(callback),
     fetch: async (url, options) => {
+      if (url === "/api/clipboard/copy") {
+        if (optionsClipboardOffline) return {ok: false, status: 503, json: async () => ({error: "대상 Windows 도우미를 먼저 실행하세요."})};
+        return {ok: true, status: 200, json: async () => ({job: "test-job"})};
+      }
+      if (url.startsWith("/api/clipboard/result")) return {ok: true, status: 200,
+        json: async () => ({ready: true, text: optionsClipboardText})};
       if (url === "/api/input") {
         const data = JSON.parse(options.body);
         events.push(data);
@@ -162,6 +169,7 @@ function fixture(usbState = "configured", options = {}) {
     }
   });
   const optionsCallback = options.onInput || (() => {}), optionsFailAt = options.failInputAt;
+  const optionsClipboardText = options.clipboardText, optionsClipboardOffline = options.clipboardOffline;
   vm.runInContext(textSource, context);
   vm.runInContext(source, context);
   return {context, document, window, elements, events, intervals,
@@ -246,14 +254,16 @@ test("pointer movement and buttons use the HID bit order", async () => {
   assert.deepEqual(f.events.at(-1), {type: "mouse", x: 20, y: -8, buttons: 3, wheel: 0});
 });
 
-test("Escape stops capture without sending a host Escape key", async () => {
+test("Escape is sent to the USB target without stopping capture", async () => {
   const f = fixture();
   await f.run("status()");
   await f.elements.get("capture").fire("click");
   await f.document.fire("keydown", {code: "Escape", preventDefault() {}});
+  await f.document.fire("keyup", {code: "Escape", preventDefault() {}});
   await f.run("chain");
-  assert.deepEqual(f.events.at(-1), {type: "release"});
-  assert.equal(f.events.some(e => e.codes?.includes("Escape")), false);
+  assert.deepEqual(f.events.at(-2), {type: "keyboard", codes: ["Escape"]});
+  assert.deepEqual(f.events.at(-1), {type: "keyboard", codes: []});
+  assert.equal(f.run("capturing"), true);
 });
 
 // 2026-10-10 00:26 KST: no keyboard or pointer capture before USB host enumeration.
@@ -306,18 +316,139 @@ test("displayed capture video enters fullscreen independently of USB control", a
   assert.equal(f.elements.get("video-fullscreen").textContent, "전체 화면");
 });
 
-test("Escape leaves capture fullscreen and releases held USB input", async () => {
+test("Ctrl Alt Shift leaves fullscreen and releases input without sending the third modifier", async () => {
   const f = fixture("configured", {videoReady: true});
   await f.run("status()");
   await f.elements.get("video").fire("load");
   await f.elements.get("video-fullscreen").fire("click");
   await f.elements.get("capture").fire("click");
   await f.document.fire("keydown", {code: "ShiftLeft", shiftKey: true, preventDefault() {}});
-  await f.document.fire("keydown", {code: "Escape", preventDefault() {}});
+  await f.document.fire("keydown", {code: "ControlRight", ctrlKey: true, shiftKey: true, preventDefault() {}});
+  await f.document.fire("keydown", {code: "AltRight", ctrlKey: true, altKey: true, shiftKey: true, preventDefault() {}});
   await f.run("chain");
   assert.equal(f.document.fullscreenElement, null);
   assert.equal(f.run("capturing"), false);
   assert.deepEqual(f.events.at(-1), {type: "release"});
+  assert.equal(f.events.some(event => event.codes?.includes("AltRight")), false);
+});
+
+// 2026-10-16 00:15 KST: real browser variations must produce complete, ordered USB reports.
+test("Hangul and Hanja pulses include semantic fallbacks and restore held Shift", async () => {
+  const f = fixture();
+  await f.run("status()"); await f.elements.get("capture").fire("click");
+  await f.document.fire("keydown", {code: "ShiftLeft", shiftKey: true, preventDefault() {}});
+  for (const event of [{code: "Lang1", key: "HangulMode"}, {code: "Unidentified", key: "HanjaMode"},
+                        {code: "", key: "Process", keyCode: 21}]) {
+    await f.document.fire("keydown", {...event, shiftKey: true, preventDefault() {}});
+    await f.document.fire("keyup", {...event, shiftKey: true, preventDefault() {}});
+  }
+  await f.run("chain");
+  const taps = f.events.filter(event => event.type === "tap");
+  assert.deepEqual(taps.map(event => event.codes), [["ShiftLeft", "Lang1"], ["ShiftLeft", "Lang2"], ["ShiftLeft", "Lang1"]]);
+  assert.ok(taps.every(event => JSON.stringify(event.restore_codes) === '["ShiftLeft"]'));
+  assert.equal(f.run("capturing"), true);
+});
+
+test("PrintScreen keyup-only events and missing IME keyups still send individual taps", async () => {
+  const f = fixture(); await f.run("status()"); await f.elements.get("capture").fire("click");
+  await f.document.fire("keyup", {code: "PrintScreen", preventDefault() {}});
+  for (let index = 0; index < 2; index++) await f.document.fire("keydown", {code: "Lang1", preventDefault() {}});
+  await f.run("chain");
+  assert.deepEqual(f.events.filter(event => event.type === "tap").map(event => event.codes), [["PrintScreen"], ["Lang1"], ["Lang1"]]);
+});
+
+test("every mapped physical key is accepted and NumLock-off keypad positions are retained", async () => {
+  const f = fixture(); await f.run("status()"); await f.elements.get("capture").fire("click");
+  for (const code of Object.keys(keyMap)) {
+    await f.document.fire("keydown", {code, key: "Process", preventDefault() {}});
+    await f.document.fire("keyup", {code, key: "Process", preventDefault() {}});
+  }
+  await f.document.fire("keydown", {code: "Numpad1", key: "End", location: 3, preventDefault() {}});
+  await f.run("chain");
+  assert.deepEqual(f.events.at(-1).codes, ["Numpad1"]);
+  assert.equal(f.run("capturing"), true);
+  assert.equal(f.events.some(event => event.type === "release"), false);
+});
+
+test("seven held ordinary keys do not fail capture and the overflow key is promoted on release", async () => {
+  const f = fixture(); await f.run("status()"); await f.elements.get("capture").fire("click");
+  for (const letter of "ABCDEFG") await f.document.fire("keydown", {code: `Key${letter}`, preventDefault() {}});
+  await f.run("chain");
+  assert.equal(f.events.at(-1).codes.length, 6);
+  await f.document.fire("keyup", {code: "KeyA", preventDefault() {}}); await f.run("chain");
+  assert.equal(f.events.at(-1).codes.includes("KeyG"), true);
+  assert.equal(f.run("capturing"), true);
+});
+
+test("AltGraph does not create a Ctrl modifier or trigger the release chord", async () => {
+  const f = fixture(); await f.run("status()"); await f.elements.get("capture").fire("click");
+  await f.document.fire("keydown", {code: "AltRight", key: "AltGraph", ctrlKey: true, altKey: true, shiftKey: true,
+    getModifierState: key => key === "AltGraph", preventDefault() {}});
+  await f.run("chain");
+  assert.deepEqual(f.events.at(-1).codes, ["AltRight", "ShiftLeft"]);
+  assert.equal(f.run("capturing"), true);
+});
+
+test("fullscreen capture locks browser keys, passes Escape, and unlocks on the release chord", async () => {
+  let locked = 0, unlocked = 0;
+  const f = fixture("configured", {keyboard: {lock: async () => locked++, unlock: () => unlocked++}});
+  await f.run("status()"); await f.elements.get("video-fullscreen").fire("click");
+  await f.elements.get("capture").fire("click"); await f.run("keyboardLockQueue");
+  assert.equal(locked, 1); assert.equal(f.run("keyboardLocked"), true);
+  await f.document.fire("keydown", {code: "Escape", preventDefault() {}}); await f.run("chain");
+  assert.equal(f.document.fullscreenElement, f.elements.get("viewer"));
+  assert.deepEqual(f.events.at(-1).codes, ["Escape"]);
+  await f.document.fire("keydown", {code: "ShiftLeft", ctrlKey: true, altKey: true, shiftKey: true, preventDefault() {}});
+  assert.equal(f.run("keyboardLocked"), false); assert.ok(unlocked > 0);
+});
+
+test("a late keyboard-lock grant is immediately released after capture stops", async () => {
+  let grant, requested, unlocked = 0;
+  const entered = new Promise(resolve => { requested = resolve; });
+  const f = fixture("configured", {keyboard: {lock: () => new Promise(resolve => { grant = resolve; requested(); }), unlock: () => unlocked++}});
+  await f.run("status()"); await f.elements.get("video-fullscreen").fire("click");
+  await f.elements.get("capture").fire("click"); await entered;
+  f.run("stopCapture()"); grant(); await f.run("keyboardLockQueue");
+  assert.equal(f.run("keyboardLocked"), false); assert.ok(unlocked > 0);
+});
+
+test("text input can use the dedicated Korean IME key", () => {
+  const plan = textPlan("한", "ko", "Lang1");
+  assert.deepEqual(plan.steps.filter(step => "ime" in step).map(step => step.codes), [["Lang1"], ["Lang1"]]);
+});
+
+test("captured Ctrl+C writes target text to this PC after sending the USB copy shortcut", async () => {
+  const writes = [], text = "대상 텍스트\r\n  😀";
+  const f = fixture("configured", {clipboardText: text, clipboard: {writeText: async value => writes.push(value)}});
+  await f.run("status()"); await f.elements.get("capture").fire("click");
+  await f.document.fire("keydown", {code: "KeyC", ctrlKey: true, preventDefault() {}});
+  await f.document.fire("keydown", {code: "ShiftLeft", ctrlKey: true, altKey: true, shiftKey: true, preventDefault() {}});
+  await f.run("clipboardCopyTask");
+  assert.deepEqual(writes, [text]);
+  assert.ok(f.events.some(event => event.codes?.includes("ControlLeft") && event.codes?.includes("KeyC")));
+  assert.match(f.elements.get("clipboard-status").textContent, /이 PC 클립보드에 복사/);
+  assert.equal(f.run("capturing"), false);
+});
+
+test("an offline helper leaves the local clipboard and active USB control untouched", async () => {
+  const writes = [];
+  const f = fixture("configured", {clipboardOffline: true, clipboard: {writeText: async value => writes.push(value)}});
+  await f.run("status()"); await f.elements.get("capture").fire("click");
+  await f.document.fire("keydown", {code: "KeyC", ctrlKey: true, preventDefault() {}});
+  await f.run("clipboardCopyTask");
+  assert.deepEqual(writes, []);
+  assert.equal(f.run("capturing"), true);
+  assert.match(f.elements.get("clipboard-status").textContent, /도우미/);
+});
+
+test("clipboard write denial is reported without showing copied content", async () => {
+  const f = fixture("configured", {clipboardText: "private test content", clipboard: {writeText: async () => {
+    throw Object.assign(new Error("denied"), {name: "NotAllowedError"}); }}});
+  await f.run("status()"); await f.elements.get("capture").fire("click");
+  await f.document.fire("keydown", {code: "KeyC", ctrlKey: true, preventDefault() {}});
+  await f.run("clipboardCopyTask");
+  assert.match(f.elements.get("clipboard-status").textContent, /쓰기가 차단/);
+  assert.equal(f.elements.get("clipboard-status").textContent.includes("private test content"), false);
 });
 
 test("native browser fullscreen exit also releases USB input without a key event", async () => {
