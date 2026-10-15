@@ -273,3 +273,10 @@
 - 키 코드 근거: https://www.w3.org/TR/uievents-code/, https://chromium.googlesource.com/chromium/src/+/main/ui/events/keycodes/dom/dom_code_data.inc, https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock
 - Pi에서 Python 57개 통과 후 기존 런타임과 편집용 소스를 백업하고 v0.6.0을 설치했습니다. gadget 재연결 후 실제 keyboard/mouse report descriptor 바이트, keyboard report 8바이트, bcdDevice 0x0101, USB configured 및 web/gadget active를 확인했습니다.
 - 설치본·Pi 편집용 소스·로컬 런타임 18개 파일이 일치합니다. 실제 localhost HTML/JS/CSS와 154키 공통 테이블, 인증/버전/상태/로그아웃, 도우미 인증 다운로드/주 콘솔 토큰 미포함, noVNC 자산, 외부 Host/Origin 차단을 검증했습니다. 실제 대상 키나 클립보드 내용은 검증 중 읽거나 전송하지 않았습니다.
+
+## 2026-10-16 00:45 KST — CodexCode — v0.6.0 GitHub 반영 및 업적 확인
+
+- 구현 커밋 `6b68fa5480b2abe03e646a810bce7ad23637bb02`을 PR #1로 게시하고 main에 병합했습니다. 병합 커밋은 `001405685d29809fc716a065a2c8aff2c708522c`입니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/pull/1
+- 브랜치 CI `38762376750`, PR CI `38762522016`, 병합 후 CI `38762726824`에서 Python 3.10/3.11/3.13 검사와 Node 테스트/빌드가 모두 성공했습니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38762726824
+- wheel/source archive의 런타임 18개 파일과 로컬 소스 일치, 실행기 포함 및 비공개 접속 정보 제외를 검증했습니다. 공개 README만 별도 준비하여 사용자가 편집한 로컬 README를 보존했습니다. 최종 공개 문서는 Pi 편집용 소스에도 반영했습니다.
+- 사용자 요청에 따라 프로필 업적을 확인했습니다. Pull Shark와 Quickdraw는 기존 획득 상태입니다. 실제 구현 PR을 검증 후 자체 병합하여 YOLO 획득을 시도했으나 현재 프로필에 추가 표시는 확인되지 않았습니다. 신규 획득으로 확정하지 않으며 불필요한 PR/허위 공동 작성/유료 후원은 진행하지 않았습니다. 참고: https://docs.github.com/en/account-and-profile/reference/profile-reference#earning-achievements

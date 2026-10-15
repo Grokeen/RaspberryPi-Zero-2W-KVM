@@ -151,3 +151,9 @@
 - 콘솔에 도우미 연결됨이 표시되면 KVM 제어 중 대상의 텍스트를 선택하고 Ctrl+C → 복사 완료 → Ctrl+Alt+Shift로 해제 → 이 PC에서 Ctrl+V 순서로 사용합니다. localhost/HTTPS와 브라우저 클립보드 쓰기 권한이 필요합니다. UTF-8 텍스트 64 KiB까지 지원하고 이미지/파일은 제외합니다. 도우미 창을 닫으면 연결이 종료됩니다.
 - 자동 검증 111개 및 PowerShell 구문/화면 렌더링 검증을 통과했습니다. 실제 대상 Windows에는 도우미를 아직 실행하지 못했으므로 최초 설정과 실제 앱에서의 복사 확인은 필요합니다. Pi 배포와 GitHub/CI 결과는 후속 기록에 추가합니다.
 - Pi v0.6.0 설치 완료. 새 USB descriptor/revision, 서비스 active와 USB configured, 18개 런타임 파일 일치 및 실제 localhost 화면/인증/도우미 다운로드 검증을 통과했습니다. 도우미의 최초 실행은 위 안내에 따라 대상 Windows에서 진행해야 합니다.
+
+## 2026-10-16 00:45 KST — v0.6.0 최종 배포 보고
+
+- Pi 설치와 GitHub main 반영을 완료했습니다. PR #1 병합(`0014056`) 및 Python 3.10/3.11/3.13 CI 성공: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/pull/1
+- 해제는 Ctrl+Alt+Shift이며, Esc/시스템키 전달은 전체 화면과 브라우저 키보드 잠금 권한을 사용합니다. 클립보드는 위 안내대로 대상 Windows에서 도우미를 최초 실행한 뒤 사용할 수 있습니다. 실제 대상 앱에서의 클립보드 왕복은 아직 미검증입니다.
+- 프로필의 기존 Pull Shark/Quickdraw를 확인했습니다. 실제 PR 병합으로 YOLO 획득을 시도했으나 추가 프로필 표시는 아직 확인되지 않았습니다.
