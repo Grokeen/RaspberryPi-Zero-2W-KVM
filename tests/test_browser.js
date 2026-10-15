@@ -150,6 +150,7 @@ function fixture(usbState = "configured", options = {}) {
   document.fullscreenEnabled = options.fullscreenSupported !== false;
   document.exitFullscreen = async () => { document.fullscreenElement = null; await document.fire("fullscreenchange"); };
   const window = new Element(), events = [], intervals = [];
+  window.localStorage = options.storage;
   window.isSecureContext = Boolean(options.secureContext);
   const navigator = {mediaDevices: options.mediaDevices, keyboard: options.keyboard, clipboard: options.clipboard};
   const context = vm.createContext({document, window, navigator, KVMKeyMap: keyMap, AbortSignal, Promise, Set, setTimeout,
@@ -342,6 +343,7 @@ test("Ctrl Alt Shift leaves fullscreen and releases input without sending the th
 // 2026-10-16 00:15 KST: real browser variations must produce complete, ordered USB reports.
 test("Hangul and Hanja pulses include semantic fallbacks and restore held Shift", async () => {
   const f = fixture();
+  f.elements.get("text-ime").value = "Lang1";
   await f.run("status()"); await f.elements.get("capture").fire("click");
   await f.document.fire("keydown", {code: "ShiftLeft", shiftKey: true, preventDefault() {}});
   for (const event of [{code: "Lang1", key: "HangulMode"}, {code: "Unidentified", key: "HanjaMode"},
@@ -358,6 +360,7 @@ test("Hangul and Hanja pulses include semantic fallbacks and restore held Shift"
 
 test("PrintScreen keyup-only events and missing IME keyups still send individual taps", async () => {
   const f = fixture(); await f.run("status()"); await f.elements.get("capture").fire("click");
+  f.elements.get("text-ime").value = "Lang1";
   await f.document.fire("keyup", {code: "PrintScreen", preventDefault() {}});
   for (let index = 0; index < 2; index++) await f.document.fire("keydown", {code: "Lang1", preventDefault() {}});
   await f.run("chain");
@@ -487,6 +490,7 @@ test("every Windows preset forwards its physical modifier sequence and releases 
   assert.ok(windowsPresets.length >= 55);
   const modifiers = {ControlLeft: "ctrlKey", AltLeft: "altKey", ShiftLeft: "shiftKey", MetaLeft: "metaKey"};
   const f = fixture(); await f.run("status()"); await f.elements.get("capture").fire("click");
+  f.elements.get("text-ime").value = "Lang1";
   for (const preset of windowsPresets) {
     const codes = preset.split(",");
     const flags = {ctrlKey: false, altKey: false, shiftKey: false, metaKey: false};
@@ -561,6 +565,58 @@ test("text input can use the dedicated Korean IME key", () => {
   assert.deepEqual(plan.steps.filter(step => "ime" in step).map(step => step.codes), [["Lang1"], ["Lang1"]]);
 });
 
+// 2026-10-16 01:55 KST: target IME settings apply to physical language keys as well as text input.
+test("Windows Hangul events use Right Alt by default without inventing Left Alt", async () => {
+  const f = fixture(); await f.run("status()"); await f.elements.get("capture").fire("click");
+  assert.equal(f.elements.get("text-ime").disabled, false);
+  for (const event of [{code: "Lang1", key: "HangulMode"},
+    {code: "AltRight", key: "HangulMode", altKey: true},
+    {code: "AltRight", key: "Process", keyCode: 21, altKey: true},
+    {code: "Unidentified", key: "Hangul", keyCode: 21}]) {
+    await f.document.fire("keydown", {...event, ctrlKey: false, shiftKey: false, preventDefault() {}});
+    await f.document.fire("keyup", {...event, ctrlKey: false, shiftKey: false, preventDefault() {}});
+  }
+  await f.run("chain");
+  assert.deepEqual(f.events.filter(event => event.type === "tap"), Array.from({length: 4}, () => ({type: "tap", codes: ["AltRight"], restore_codes: []})));
+  assert.match(f.elements.get("ime-status").textContent, /한\/영키 수신.*AltRight/);
+  assert.equal(f.run("keys.size"), 0);
+  await f.document.fire("keydown", {code: "AltRight", key: "HangulMode", ctrlKey: true, altKey: true, shiftKey: true, preventDefault() {}});
+  assert.equal(f.run("capturing"), false); // The emergency chord still uses the physical modifier position.
+});
+
+test("IME pulse and test button use the chosen target chord and preserve unrelated held keys", async () => {
+  const f = fixture(); await f.run("status()");
+  f.elements.get("text-ime").value = "ShiftLeft,Space";
+  await f.elements.get("capture").fire("click");
+  await f.document.fire("keydown", {code: "KeyA", preventDefault() {}});
+  await f.document.fire("keydown", {code: "Lang1", preventDefault() {}});
+  await f.document.fire("keyup", {code: "Lang1", preventDefault() {}});
+  await f.run("chain");
+  assert.deepEqual(f.events.at(-1), {type: "tap", codes: ["ShiftLeft", "Space", "KeyA"], restore_codes: ["KeyA"]});
+  await f.elements.get("ime-send").fire("click");
+  assert.deepEqual(f.events.slice(-2), [{type: "release"}, {type: "tap", codes: ["ShiftLeft", "Space"]}]);
+  assert.equal(f.run("capturing"), false);
+});
+
+test("IME preference survives reload while storage failures retain the Windows default", async () => {
+  let saved;
+  const storage = {getItem: () => saved, setItem: (key, value) => { assert.equal(key, "kvm-target-ime"); saved = value; }};
+  const f = fixture("configured", {storage});
+  f.elements.get("text-ime").value = "Lang1";
+  await f.elements.get("text-ime").fire("change");
+  assert.equal(fixture("configured", {storage}).elements.get("text-ime").value, "Lang1");
+  assert.equal(fixture("configured", {storage: {getItem() { throw new Error("blocked"); }}}).elements.get("text-ime").value, "AltRight");
+});
+
+test("unmarked Right Alt and Japanese Kana keep their physical key semantics", async () => {
+  const f = fixture(); await f.run("status()"); await f.elements.get("capture").fire("click");
+  await f.document.fire("keydown", {code: "AltRight", key: "AltGraph", altKey: true,
+    getModifierState: key => key === "AltGraph", preventDefault() {}});
+  await f.run("chain");
+  assert.deepEqual(f.events.at(-1), {type: "keyboard", codes: ["AltRight"]});
+  assert.equal(f.run("physicalCode({code:'KanaMode', key:'KanaMode', keyCode:21})"), "KanaMode");
+});
+
 test("captured Ctrl+C writes target text to this PC after sending the USB copy shortcut", async () => {
   const writes = [], text = "대상 텍스트\r\n  😀";
   const f = fixture("configured", {clipboardText: text, clipboard: {writeText: async value => writes.push(value)}});
@@ -577,12 +633,17 @@ test("captured Ctrl+C writes target text to this PC after sending the USB copy s
 test("an offline helper leaves the local clipboard and active USB control untouched", async () => {
   const writes = [];
   const f = fixture("configured", {clipboardOffline: true, clipboard: {writeText: async value => writes.push(value)}});
-  await f.run("status()"); await f.elements.get("capture").fire("click");
+  await f.run("status()"); f.run("setSettingsOpen(false)"); await f.elements.get("capture").fire("click");
   await f.document.fire("keydown", {code: "KeyC", ctrlKey: true, preventDefault() {}});
   await f.run("clipboardCopyTask");
   assert.deepEqual(writes, []);
   assert.equal(f.run("capturing"), true);
   assert.match(f.elements.get("clipboard-status").textContent, /도우미/);
+  assert.equal(f.elements.get("clipboard-feedback").hidden, false);
+  assert.match(f.elements.get("clipboard-feedback").textContent, /도우미/);
+  assert.equal(f.elements.get("session-settings").hidden, true);
+  f.run("showLogin()");
+  assert.equal(f.elements.get("clipboard-feedback").hidden, true);
 });
 
 test("clipboard write denial is reported without showing copied content", async () => {

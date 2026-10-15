@@ -1,5 +1,7 @@
 """2026-10-16 00:25 KST: CodexCode - explicit clipboard jobs, scope, expiry and text bounds."""
 import unittest
+import hashlib
+import hmac
 from zero2w_kvm.clipboard import ClipboardBridge
 
 
@@ -9,6 +11,8 @@ class ClipboardTests(unittest.TestCase):
         self.bridge = ClipboardBridge("test-only-console-token-32-characters", clock=lambda: self.now)
 
     def test_helper_scope_and_explicit_single_use_job(self):
+        old_helper = hmac.new(b"test-only-console-token-32-characters", b"zero2w-kvm/clipboard-agent/v1", hashlib.sha256).hexdigest()
+        self.assertFalse(self.bridge.accepts_agent(old_helper))
         self.assertFalse(self.bridge.accepts_agent("test-only-console-token-32-characters"))
         self.assertTrue(self.bridge.accepts_agent(self.bridge.agent_token))
         self.assertIsNone(self.bridge.poll())

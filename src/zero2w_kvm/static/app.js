@@ -55,6 +55,9 @@ function requestKeyboardLock() {
   return keyboardLockQueue;
 }
 function physicalCode(event) {
+  // 2026-10-16 01:55 KST: Korean IME keys may be reported on the AltRight/ControlRight positions.
+  if (["HangulMode", "Hangul"].includes(event.key) || (event.keyCode === 21 && ["AltRight", "Lang1", "Unidentified", ""].includes(event.code || ""))) return "Lang1";
+  if (["HanjaMode", "Hanja"].includes(event.key) || (event.keyCode === 25 && ["ControlRight", "Lang2", "Unidentified", ""].includes(event.code || ""))) return "Lang2";
   if (known.has(event.code)) return event.code;
   const aliases = {HangulMode: "Lang1", Hangul: "Lang1", HanjaMode: "Lang2", Hanja: "Lang2",
     KanaMode: "KanaMode", KanjiMode: "Lang2", Esc: "Escape", Del: "Delete", Spacebar: "Space"};
@@ -71,8 +74,22 @@ function physicalCode(event) {
   return known.has(event.key) ? event.key : null;
 }
 function keyboardCodes(values = [...keys]) {
+  values = [...new Set(values)];
   const modifiers = values.filter(code => KVMKeyMap[code] >= 0xE0);
   return [...modifiers, ...values.filter(code => KVMKeyMap[code] < 0xE0).slice(0, 6)];
+}
+function targetImeCodes() {
+  const choice = $("text-ime").value || "AltRight";
+  return (KVMText.imeKeys.includes(choice) ? choice : "AltRight").split(",");
+}
+try {
+  const savedIme = window.localStorage?.getItem("kvm-target-ime");
+  $("text-ime").value = KVMText.imeKeys.includes(savedIme) ? savedIme : "AltRight";
+} catch { $("text-ime").value = "AltRight"; }
+// 2026-10-16 01:55 KST: show copy failures even while the settings panel is folded.
+function clipboardFeedback(message) {
+  $("clipboard-status").textContent = $("clipboard-feedback").textContent = message;
+  $("clipboard-feedback").hidden = false;
 }
 function isReleaseChord(event, code) {
   return /^(Control|Alt|Shift)(Left|Right)$/.test(code || "") &&
@@ -82,9 +99,9 @@ function isReleaseChord(event, code) {
 async function copyTargetClipboard() {
   const generation = ++clipboardGeneration;
   if (typeof navigator.clipboard?.writeText !== "function") {
-    $("clipboard-status").textContent = "이 PC의 localhost 콘솔에서 브라우저 클립보드를 사용할 수 있습니다."; return;
+    clipboardFeedback("이 PC의 localhost 콘솔에서 브라우저 클립보드를 사용할 수 있습니다."); return;
   }
-  $("clipboard-status").textContent = "대상 Windows에서 복사한 텍스트를 가져오는 중…";
+  clipboardFeedback("대상 Windows에서 복사한 텍스트를 가져오는 중…");
   try {
     const {job} = await api("/api/clipboard/copy", {});
     const deadline = Date.now() + 10000;
@@ -95,15 +112,15 @@ async function copyTargetClipboard() {
         if (result.error) throw new Error(({no_text: "대상 클립보드에 텍스트가 없습니다. 이미지·파일은 지원하지 않습니다.",
           too_large: "클립보드 텍스트는 최대 64 KiB까지 가져올 수 있습니다.", busy: "대상 클립보드가 사용 중입니다. 다시 복사하세요."})[result.error] || "클립보드를 읽지 못했습니다.");
         await navigator.clipboard.writeText(result.text);
-        if (generation === clipboardGeneration) $("clipboard-status").textContent = "이 PC 클립보드에 복사했습니다. Ctrl+Alt+Shift로 제어를 해제한 뒤 Ctrl+V로 붙여 넣으세요.";
+        if (generation === clipboardGeneration) clipboardFeedback("이 PC 클립보드에 복사했습니다. Ctrl+Alt+Shift로 제어를 해제한 뒤 Ctrl+V로 붙여 넣으세요.");
         return;
       }
       await new Promise(resolve => setTimeout(resolve, 150));
     }
     if (generation === clipboardGeneration) throw new Error("대상 클립보드 응답 시간이 초과되었습니다.");
   } catch (error) {
-    if (generation === clipboardGeneration) $("clipboard-status").textContent = error.name === "NotAllowedError"
-      ? "이 PC 클립보드 쓰기가 차단되었습니다. 브라우저 사이트 권한을 확인하고 다시 Ctrl+C를 누르세요." : error.message;
+    if (generation === clipboardGeneration) clipboardFeedback(error.name === "NotAllowedError"
+      ? "이 PC 클립보드 쓰기가 차단되었습니다. 브라우저 사이트 권한을 확인하고 다시 Ctrl+C를 누르세요." : error.message);
   }
 }
 
@@ -343,13 +360,14 @@ function usbControls() {
   document.querySelectorAll("[data-keys]").forEach(button => { button.disabled = blocked; });
   for (const id of ["type-text", "text-layout", "text-send"]) $(id).disabled = blocked;
   for (const id of ["windows-shortcut", "shortcut-send", "shortcut-key", "shortcut-ctrl", "shortcut-alt", "shortcut-shift", "shortcut-win"]) $(id).disabled = blocked || shortcutSending;
-  $("text-ime").disabled = blocked || $("text-layout").value !== "ko";
+  $("text-ime").disabled = $("ime-send").disabled = blocked;
   $("text-stop").disabled = !typing || typingCancelled;
   $("screen").setAttribute("aria-disabled", String(!usbConnected));
 }
 function showLogin() {
   authenticated = false;
   clipboardGeneration++;
+  $("clipboard-feedback").hidden = true;
   stopLocalVideo();
   cancelTextEntry();
   $("type-text").value = "";
@@ -431,6 +449,14 @@ async function typeText() {
 }
 $("type-text").addEventListener("focus", stopCapture);
 $("text-layout").addEventListener("change", usbControls);
+$("text-ime").addEventListener("focus", stopCapture);
+$("text-ime").addEventListener("change", () => {
+  stopCapture();
+  const choice = targetImeCodes().join(",");
+  try { window.localStorage?.setItem("kvm-target-ime", choice); } catch {}
+  $("ime-status").textContent = `한/영 전환키: ${choice}. 대상에서 한국어 Microsoft IME를 선택한 뒤 시험하세요.`;
+});
+$("ime-send").addEventListener("click", () => sendShortcut(targetImeCodes()));
 $("text-send").addEventListener("click", typeText);
 $("text-stop").addEventListener("click", cancelTextEntry);
 function captureUI() {
@@ -503,12 +529,17 @@ document.addEventListener("pointerlockchange", () => {
 });
 document.addEventListener("pointerlockerror", () => notice("브라우저가 마우스 캡처를 허용하지 않았습니다."));
 // 2026-10-10 01:00 KST: IME/focus changes can omit modifier key events; trust the current flags.
-function syncModifiers(event) {
+function syncModifiers(event, imeSource = null) {
   for (const [flag, left, right] of [
     ["shiftKey", "ShiftLeft", "ShiftRight"], ["ctrlKey", "ControlLeft", "ControlRight"],
     ["altKey", "AltLeft", "AltRight"], ["metaKey", "MetaLeft", "MetaRight"]
   ]) {
     if (typeof event[flag] !== "boolean") continue;
+    if (imeSource === left || imeSource === right) {
+      keys.delete(imeSource);
+      if (!event[flag]) { keys.delete(left); keys.delete(right); }
+      continue; // The language key's position must not invent a second Alt/Ctrl modifier.
+    }
     // AltGr may expose a synthetic Ctrl flag; do not invent a physical Ctrl key.
     if (flag === "ctrlKey" && (event.key === "AltGraph" || event.getModifierState?.("AltGraph"))) continue;
     if (!event[flag]) { keys.delete(left); keys.delete(right); }
@@ -517,7 +548,7 @@ function syncModifiers(event) {
 }
 for (const type of ["keydown", "keyup"]) document.addEventListener(type, event => {
   const code = physicalCode(event);
-  if (type === "keydown" && isReleaseChord(event, code) && (capturing || typing || isVideoFullscreen())) {
+  if (type === "keydown" && isReleaseChord(event, event.code || code) && (capturing || typing || isVideoFullscreen())) {
     event.preventDefault(); cancelTextEntry(); stopCapture(); exitVideoFullscreen(); return;
   }
   if (typing) return;
@@ -525,11 +556,13 @@ for (const type of ["keydown", "keyup"]) document.addEventListener(type, event =
   event.preventDefault();
   if (!code) { $("keyboard-help").textContent = `${releaseHint} 이 키는 브라우저에서 USB 키 코드로 식별되지 않습니다.`; return; }
   if (momentaryKeys.has(code)) {
-    syncModifiers(event);
+    syncModifiers(event, (code === "Lang1" && event.code === "AltRight") || (code === "Lang2" && event.code === "ControlRight") ? event.code : null);
     if (type === "keyup" && pulsedKeys.delete(code)) return;
     if (type === "keydown") { if (event.repeat) return; pulsedKeys.add(code); }
     const restore = keyboardCodes();
-    input({type: "tap", codes: keyboardCodes([code, ...keys]), restore_codes: restore});
+    const action = code === "Lang1" ? targetImeCodes() : [code];
+    if (code === "Lang1") $("ime-status").textContent = `한/영키 수신 → ${action.join("+")} 전송. 전환되지 않으면 대상의 한국어 IME와 전환키 설정을 확인하세요.`;
+    input({type: "tap", codes: keyboardCodes([...action, ...keys]), restore_codes: restore});
     return;
   }
   const previous = [...keys].join("\0");

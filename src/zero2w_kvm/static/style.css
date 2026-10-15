@@ -150,3 +150,5 @@ footer { padding-top: 0; color: #7d90aa; font-size: 12px; }
 }
 /* 2026-10-16 01:00 KST: Windows shortcut modifier controls in the session panel. */
 .shortcut-modifiers{display:flex;flex-wrap:wrap;gap:.6rem;margin:.6rem 0}.shortcut-modifiers label{display:flex;align-items:center;gap:.3rem}.shortcut-modifiers input{width:auto;margin:0}
+/* 2026-10-16 01:55 KST: copy feedback remains visible inside fullscreen without releasing USB input. */
+.clipboard-feedback{position:absolute;z-index:12;left:16px;bottom:16px;max-width:min(520px,calc(100% - 32px));margin:0;padding:12px 16px;border:1px solid #57667b;border-radius:8px;background:#142232;color:#e8f0ff;font-size:13px;pointer-events:none}
