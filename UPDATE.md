@@ -292,3 +292,9 @@
 - 기준: https://support.microsoft.com/en-us/accessibility/windows/keyboard-shortcuts-in-windows, https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock
 - Pi에서도 Python 58개와 Node 63개가 통과했습니다. 기존 런타임/편집용 소스를 백업하고 웹 파일만 갱신했으며 USB 장치를 재연결하지 않았습니다. v0.6.1, web/gadget active 및 USB configured를 확인했습니다.
 - 최종 런타임 18개 파일은 로컬·Pi 편집용 소스·설치본이 일치합니다. 실제 localhost 화면/키 테이블/인증 API/도우미 다운로드/noVNC 자산과 외부 Host·Origin 차단 검증을 통과했습니다. 직접 조합 UI의 데스크톱/모바일 추가 2가지 렌더링도 검증해 가로 넘침이 없음을 확인했습니다.
+
+## 2026-10-16 01:10 KST — CodexCode — Windows 단축키 보완 GitHub 반영
+
+- 구현 커밋 `8c7f0f72d2b193811f40b642eac1d1708423fcb5`을 PR #2로 게시하고 main에 병합했습니다. 병합 커밋은 `8fcab08035cc584e34f3841e9aafc220506b05f4`입니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/pull/2
+- 브랜치 CI `38766458668`와 PR CI `38766464576`에서 Python 3.10/3.11/3.13의 자동 검사와 Node 테스트/빌드가 모두 성공했습니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38766464576
+- v0.6.1 wheel/source archive 빌드와 런타임 파일 일치, 공개 Git/패키지의 비공개 접속 정보 제외를 확인했습니다. 사용자 로컬 README와 별도 사용자 파일은 보존했습니다. 실제 대상의 Alt+Tab 결과와 브라우저 키보드 잠금 상태는 사용자 확인을 요청했으며, 확인 전에는 실제 기능 검증 완료로 간주하지 않습니다.
