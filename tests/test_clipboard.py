@@ -61,3 +61,23 @@ class ClipboardTests(unittest.TestCase):
         result = self.bridge.result(identity, "owner")
         self.assertEqual(result["error"], "no_text")
         self.assertIsNone(result["text"])
+
+    # 2026-10-16 03:22 KST: a lost agent poll may retry, but never after completion or the original expiry.
+    def test_lost_agent_delivery_is_retried_without_extending_the_copy_deadline(self):
+        self.bridge.poll()
+        identity = self.bridge.create("owner")
+        self.assertEqual(self.bridge.poll(), identity)
+        self.now = 1.9
+        self.assertIsNone(self.bridge.poll())
+        self.now = 2
+        self.assertEqual(self.bridge.poll(), identity)
+        self.bridge.complete(identity, "explicit copy only")
+        self.now = 4
+        self.assertIsNone(self.bridge.poll())
+        self.assertEqual(self.bridge.result(identity, "owner")["text"], "explicit copy only")
+        identity = self.bridge.create("owner")
+        self.assertEqual(self.bridge.poll(), identity)
+        self.now = 14
+        self.assertIsNone(self.bridge.poll())
+        with self.assertRaises(KeyError):
+            self.bridge.complete(identity, "late")

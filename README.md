@@ -2,7 +2,7 @@
 
 Raspberry Pi Zero 2 W를 USB 키보드·마우스로 연결해 다른 컴퓨터를 웹 브라우저에서 제어하는 KVM 프로젝트입니다. 캡처보드로 대상의 HDMI 화면을 보고, Pi를 통해 키보드와 마우스 입력을 전달합니다.
 
-현재 버전: **v0.6.2** · Python 3.10 이상 · 한국어 웹 콘솔
+현재 버전: **v0.6.3** · Python 3.10 이상 · 한국어 웹 콘솔
 
 ## 연결 구성
 
@@ -60,6 +60,8 @@ sudo bash scripts/install.sh
 ```
 
 설치기는 USB peripheral 설정을 준비하고 기존 설정·런타임을 백업합니다. 처음 설치해 USB 모드가 바뀐 경우 Pi를 재부팅하세요. 설치 출력의 안내를 따르세요.
+
+웹 콘솔과 Windows 클립보드 실행 묶음도 이 저장소의 같은 소스에서 설치합니다. 설치기는 실행 묶음을 생성할 수 있는지 먼저 확인합니다. 기존 설치를 갱신할 때는 저장소에서 `git pull --ff-only` 후 같은 `sudo bash scripts/install.sh`를 실행합니다. Windows의 자동 실행 등록은 아래 6번 절차로 대상 Windows에서 한 번 진행합니다.
 
 ```bash
 sudo reboot
@@ -156,15 +158,19 @@ Windows와 브라우저는 일부 키를 먼저 처리합니다. Ctrl+Alt+Del·W
 | 실행 파일 | 실행할 컴퓨터 |
 | --- | --- |
 | `Open-KVM-PC.cmd` | KVM 브라우저로 화면을 보며 조종하는 PC |
-| `Start-KVM-Clipboard.cmd` 또는 클립보드 PowerShell 명령 | Pi USB 케이블이 연결된, 조종당하는 Windows |
+| `Install-KVM-Clipboard.cmd`, `Start-KVM-Clipboard.cmd` 또는 클립보드 PowerShell 명령 | Pi USB 케이블이 연결된, 조종당하는 Windows |
 
 1. 콘솔의 **클립보드 · 대상 → 이 PC → 대상 Windows 실행 묶음 받기**를 누릅니다.
 2. 받은 `KVM-Windows-Clipboard.zip`을 **대상 Windows**로 옮깁니다. 대상 Windows의 브라우저에서 Pi 콘솔에 로그인해 직접 받아도 됩니다.
-3. 대상 PC에서 압축을 풀고 **Start-KVM-Clipboard.cmd**를 더블 클릭합니다.
-4. 도우미가 Pi USB 키보드를 확인하고 **Connected to KVM**을 표시하면 창을 최소화합니다.
+3. 기존 수동 도우미 창을 닫습니다. Pi USB 데이터 케이블을 연결하고, 대상 PC에서 압축을 푼 뒤 **Install-KVM-Clipboard.cmd**를 한 번 실행합니다.
+4. 도우미가 현재 사용자용으로 설치되고 백그라운드에서 시작됩니다. 이후 **Windows 로그인과 Pi USB 재연결 시 자동으로 동작**합니다. USB가 없으면 대기합니다.
 5. 조종하는 PC의 KVM 콘솔에도 **대상 Windows 도우미 연결됨**이 표시되는지 확인합니다.
 
-대상 PC의 로그인한 사용자로 실행하세요. 관리자 권한이나 자동 시작 등록은 필요하지 않습니다. 도우미 창을 닫으면 종료됩니다. ZIP에는 해당 KVM의 도우미 전용 인증 정보가 들어 있으므로 공개로 공유하지 마세요.
+대상 PC의 로그인한 사용자로 실행하세요. 관리자 권한은 필요하지 않습니다. 설치 위치는 `%LOCALAPPDATA%\Zero2WKVM-Clipboard`이며 현재 사용자의 시작프로그램 폴더에 바로가기를 등록합니다. 다른 Windows 사용자로 로그인하면 해당 사용자도 한 번 설치해야 합니다. 대상이 로그인한 상태여야 그 사용자의 클립보드를 가져올 수 있습니다. ZIP에는 해당 KVM의 도우미 전용 인증 정보가 들어 있으므로 공개로 공유하지 마세요.
+
+설치 없이 사용하려면 **Start-KVM-Clipboard.cmd**를 실행하고 **Connected to KVM** 표시 후 창을 최소화하세요. 이 수동 실행은 창을 닫으면 종료됩니다. **Uninstall-KVM-Clipboard.cmd**로 자동 실행 등록과 설치 파일을 제거하고 도우미를 종료합니다. 설치 폴더에도 제거 파일이 있습니다.
+
+시간초과가 나면 **Check-KVM-Clipboard.cmd**를 실행하세요. USB·Pi 네트워크·인증을 검사하고 자동 도우미의 마지막 처리 단계를 표시합니다. 이 검사는 클립보드를 읽거나 복사 요청을 소비하지 않습니다. 자동 실행만 설정해도 대상 Windows에서 Pi 서버로 연결되는 네트워크는 필요합니다.
 
 PowerShell 스크립트만 받은 경우 대상 PC의 파일 위치에서 다음과 같이 실행합니다.
 
@@ -186,6 +192,7 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\KVM-Windows-Clipb
 | Cannot reach the Pi KVM server | 대상 Windows에서 Pi 서버에 접속할 수 있는지 확인 |
 | Helper authentication failed | 콘솔에 로그인해 새 실행 묶음을 다운로드 |
 | 도우미 연결되지 않음 | 대상 PC의 도우미 창이 실행 중이며 Connected to KVM인지 확인 |
+| 시간초과 | Check-KVM-Clipboard.cmd로 통신 검사. 자동 실행 중이면 마지막 상태가 USB 대기·클립보드 읽기·결과 전송 중 어디인지 확인 |
 | 이 PC 클립보드 쓰기 차단 | localhost 주소와 브라우저의 클립보드 쓰기 권한 확인 |
 
 도우미가 연결되지 않아도 대상 Windows 안에서의 Ctrl+C 입력은 그대로 전달됩니다.
@@ -229,9 +236,9 @@ python3 -m pip install build
 python3 -m build
 ```
 
-GitHub Actions는 Python 3.10/3.11/3.13에서 검사와 패키지 빌드를 수행합니다. 변경 기록은 [UPDATE.md](UPDATE.md), 작업 결과와 확인 방법은 [OWERORDER.md](OWERORDER.md)에 기록합니다.
+GitHub Actions는 Python 3.10/3.11/3.13에서 검사와 패키지 빌드를 수행하고, Windows에서도 도우미의 HTTP 통신과 설치·제거를 격리 검사합니다. Windows에서는 `powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/test_windows_clipboard.ps1`로 같은 검사를 실행할 수 있습니다. 실제 클립보드나 시작프로그램 폴더에는 접근하지 않습니다. 변경 기록은 [UPDATE.md](UPDATE.md), 작업 결과와 확인 방법은 [OWERORDER.md](OWERORDER.md)에 기록합니다.
 
-Alt+Tab이 실제 대상 Windows에서 창을 전환하는 것은 사용자 확인을 받았습니다. 자동 검증에서 확인한 키 보고/이벤트 경로와 실제 대상 OS에서의 전체 기능 실측은 구분합니다. 한/영 전환과 클립보드는 대상의 IME 설정·도우미 최초 실행 후 실제 동작을 확인해야 합니다.
+Alt+Tab의 대상 Windows 창 전환과 한/영키 정상 작동은 사용자 확인을 받았습니다. 자동 검증에서 확인한 키 보고/이벤트 경로와 실제 대상 OS에서의 전체 기능 실측은 구분합니다. 클립보드 전달과 USB 재연결 자동 동작은 대상 Windows에 도우미를 설치한 뒤 실제 환경에서 확인해야 합니다.
 
 ## 참고 자료
 
@@ -239,3 +246,4 @@ Alt+Tab이 실제 대상 Windows에서 창을 전환하는 것은 사용자 확�
 - [Microsoft Windows 기본 단축키](https://support.microsoft.com/en-us/accessibility/windows/keyboard-shortcuts-in-windows)
 - [Chrome Keyboard Lock의 전체 화면 조건과 OS 제한](https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock)
 - [표준 물리 키 코드](https://www.w3.org/TR/uievents-code/)
+- [Microsoft Windows 시작프로그램 설정](https://support.microsoft.com/en-gb/windows/experience/startup-boot/configure-startup-applications-in-windows)

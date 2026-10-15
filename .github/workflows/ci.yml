@@ -4,6 +4,16 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  # 2026-10-16 03:27 KST: exercise real PowerShell behavior with private fixtures on Windows.
+  windows-helper:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -p test_windows_helper.py -v
+      - run: powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/test_windows_clipboard.ps1
   test:
     runs-on: ubuntu-latest
     strategy:

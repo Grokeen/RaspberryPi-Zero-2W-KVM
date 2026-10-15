@@ -1,9 +1,46 @@
 """2026-10-16 00:25 KST: CodexCode - explicit, text-only clipboard jobs for one Windows USB target."""
 import hashlib
 import hmac
+import io
+from pathlib import Path
 import secrets
 import threading
 import time
+import zipfile
+
+
+# 2026-10-16 03:22 KST: the installed Pi and source installer build the same target Windows bundle.
+def windows_helper(server, token, bundle=False):
+    static = Path(__file__).with_name("static")
+    helper = (static / "windows-clipboard-helper.ps1").read_text(encoding="utf-8")
+    helper = helper.replace("__KVM_SERVER__", server).replace("__KVM_AGENT_TOKEN__", token).encode("utf-8-sig")
+    if not bundle:
+        return helper
+    commands = {
+        "Start": ('KVM-Windows-Clipboard.ps1', '', 'if errorlevel 1 pause'),
+        "Install": ('KVM-Windows-Clipboard-Setup.ps1', ' -Action Install', 'pause'),
+        "Uninstall": ('KVM-Windows-Clipboard-Setup.ps1', ' -Action Uninstall', 'pause'),
+        "Check": ('KVM-Windows-Clipboard.ps1', ' -CheckNetwork', 'pause'),
+    }
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("KVM-Windows-Clipboard.ps1", helper)
+        archive.writestr("KVM-Windows-Clipboard-Setup.ps1", (static / "windows-clipboard-setup.ps1").read_text(encoding="utf-8").encode("utf-8-sig"))
+        for name, (script, arguments, ending) in commands.items():
+            command = f'@echo off\r\nsetlocal\r\npowershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0{script}"{arguments}\r\n{ending}\r\n'
+            archive.writestr(f"{name}-KVM-Clipboard.cmd", command.encode("ascii"))
+        archive.writestr("README.txt", (
+            "조종당하는 Windows에서 압축을 푸세요. Pi USB 데이터 케이블이 연결되어 있어야 합니다.\r\n"
+            "Install-KVM-Clipboard.cmd: 최초 한 번 실행해 현재 사용자 자동 실행을 설정합니다. 관리자 권한은 필요 없습니다.\r\n"
+            "설치 후 USB 재연결과 Windows 로그인 시 자동으로 동작합니다. USB가 없으면 대기합니다.\r\n"
+            "Start-KVM-Clipboard.cmd: 설치 없이 수동 실행합니다. 창을 닫으면 종료됩니다.\r\n"
+            "Check-KVM-Clipboard.cmd: USB/네트워크/인증과 자동 도우미의 마지막 상태를 확인합니다. 클립보드는 읽지 않습니다.\r\n"
+            "Uninstall-KVM-Clipboard.cmd: 자동 실행을 제거하고 도우미를 종료합니다.\r\n"
+            "설치 위치: %LOCALAPPDATA%\\Zero2WKVM-Clipboard. 이 폴더에서도 제거 파일을 실행할 수 있습니다.\r\n"
+            "KVM 콘솔의 대상 Windows 도우미 연결됨 표시 후 Ctrl+C로 텍스트를 복사하세요.\r\n"
+            "대상 Windows에서 Pi 서버로 네트워크 통신이 필요합니다. 이 묶음에는 도우미 전용 인증 정보가 있습니다.\r\n"
+        ).encode("utf-8-sig"))
+    return output.getvalue()
 
 
 class ClipboardBridge:
@@ -31,7 +68,7 @@ class ClipboardBridge:
             if self.last_seen is None or now - self.last_seen >= 5:
                 raise ConnectionError("대상 Windows 도우미가 연결되지 않았습니다. 클립보드 설정의 실행 묶음을 조종당하는 Windows로 옮겨 실행하세요. 현재 조종하는 PC에서 실행하면 안 됩니다.")
             identity = secrets.token_urlsafe(18)
-            self.job = {"id": identity, "owner": owner, "expires": now + 10, "dispatched": False, "ready": False}
+            self.job = {"id": identity, "owner": owner, "expires": now + 10, "dispatched": False, "last_dispatch": None, "ready": False}
             return identity
 
     def poll(self):
@@ -39,8 +76,10 @@ class ClipboardBridge:
             self.last_seen = self.clock()
             if self.job and self.job["expires"] <= self.clock():
                 self.job = None
-            if self.job and not self.job["dispatched"]:
+            # 2026-10-16 03:22 KST: retry a lost poll response/restarted helper within the original job deadline.
+            if self.job and not self.job["ready"] and (not self.job["dispatched"] or self.clock() - self.job["last_dispatch"] >= 2):
                 self.job["dispatched"] = True
+                self.job["last_dispatch"] = self.clock()
                 return self.job["id"]
             return None
 
