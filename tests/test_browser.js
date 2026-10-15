@@ -11,9 +11,12 @@ const textSource = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/stati
 
 // 2026-10-15 23:10 KST: CodexCode - exercise device selection and capture cleanup races.
 function captureFixture(getUserMedia) {
-  const track = {label: "Live Gamer ULTRA S GC553Pro", stopped: 0, listeners: {},
+  const track = {label: "Live Gamer ULTRA S GC553Pro", stopped: 0, listeners: {}, applied: [],
+    settings: {width: 1920, height: 1080, frameRate: 30},
     stop() { this.stopped++; }, addEventListener(type, callback) { this.listeners[type] = callback; },
-    getSettings: () => ({width: 1920, height: 1080, frameRate: 30})};
+    getSettings() { return this.settings; },
+    async applyConstraints(constraints) { this.applied.push(constraints); this.settings = {
+      width: constraints.width.ideal, height: constraints.height.ideal, frameRate: constraints.frameRate.ideal}; }};
   const stream = {getTracks: () => [track], getVideoTracks: () => [track]};
   const requests = [];
   const mediaDevices = {
@@ -61,7 +64,7 @@ test("PC capture stops a stream that arrives after switching sources", async () 
   assert.equal(f.run("videoSource"), "pi");
 });
 
-test("PC capture reports permission denial and an unplugged device ends fullscreen", async () => {
+test("PC capture reports permission denial and keeps fullscreen settings available after unplug", async () => {
   const denied = captureFixture(async () => { throw Object.assign(new Error("denied"), {name: "NotAllowedError"}); });
   await denied.run("status()"); await denied.run("findLocalDevices()"); await denied.run("startLocalVideo()");
   assert.match(denied.elements.get("local-video-notice").textContent, /권한이 거부/);
@@ -71,7 +74,7 @@ test("PC capture reports permission denial and an unplugged device ends fullscre
   await f.elements.get("video-fullscreen").fire("click");
   f.track.listeners.ended();
   await Promise.resolve();
-  assert.equal(f.document.fullscreenElement, null);
+  assert.equal(f.document.fullscreenElement, f.elements.get("viewer"));
   assert.equal(f.run("videoReady"), false);
   assert.match(f.elements.get("video-status").textContent, /끊겼/);
 });
@@ -102,7 +105,16 @@ test("an HTTP Pi page gives localhost instructions without requesting a device",
 function fixture(usbState = "configured", options = {}) {
   let videoReady = Boolean(options.videoReady);
   class Element {
-    constructor() { this.listeners = {}; this.dataset = {}; this.value = ""; this.classList = {add() {}, remove() {}}; }
+    constructor() {
+      this.listeners = {}; this.dataset = {}; this.value = "";
+      const classes = new Set();
+      this.classList = {add: name => classes.add(name), remove: name => classes.delete(name),
+        contains: name => classes.has(name), toggle: (name, force) => {
+          const enabled = force === undefined ? !classes.has(name) : force;
+          if (enabled) classes.add(name); else classes.delete(name);
+          return enabled;
+        }};
+    }
     addEventListener(type, listener) { (this.listeners[type] ||= []).push(listener); }
     async fire(type, event = {}) { for (const listener of this.listeners[type] || []) await listener(event); }
     focus() {}
@@ -260,14 +272,15 @@ test("detached USB disables capture and clicking the screen only shows wiring gu
 });
 
 // 2026-10-10 20:23 KST: capture fullscreen availability, exit/release and failure paths.
-test("video fullscreen is disabled without a displayed capture frame", async () => {
-  const f = fixture("configured", {videoReady: true});
+test("fullscreen includes settings before video connects and logout exits it", async () => {
+  const f = fixture();
   await f.run("status()");
-  assert.equal(f.elements.get("video-fullscreen").disabled, true);
-  await f.elements.get("video-fullscreen").fire("click");
-  assert.equal(f.document.fullscreenElement, null);
-  await f.elements.get("video").fire("load");
   assert.equal(f.elements.get("video-fullscreen").disabled, false);
+  await f.elements.get("video-fullscreen").fire("click");
+  assert.equal(f.document.fullscreenElement, f.elements.get("viewer"));
+  await f.run("showLogin()");
+  assert.equal(f.document.fullscreenElement, null);
+  assert.equal(f.elements.get("video-fullscreen").disabled, true);
 });
 
 test("a decoded MJPEG frame enables fullscreen even when its load event is delayed", async () => {
@@ -284,7 +297,7 @@ test("displayed capture video enters fullscreen independently of USB control", a
   await f.run("status()");
   await f.elements.get("video").fire("load");
   await f.elements.get("video-fullscreen").fire("click");
-  assert.equal(f.document.fullscreenElement, f.elements.get("screen"));
+  assert.equal(f.document.fullscreenElement, f.elements.get("viewer"));
   assert.equal(f.elements.get("video-fullscreen")["aria-pressed"], "true");
   assert.equal(f.elements.get("video-fullscreen").textContent, "전체 화면 종료");
   assert.deepEqual(f.events, []);
@@ -320,15 +333,84 @@ test("native browser fullscreen exit also releases USB input without a key event
   assert.deepEqual(f.events.at(-1), {type: "release"});
 });
 
-test("capture signal loss exits fullscreen and disables the button", async () => {
+test("capture signal loss keeps fullscreen settings available and releases USB control", async () => {
   const f = fixture("configured", {videoReady: true});
   await f.run("status()");
   await f.elements.get("video").fire("load");
   await f.elements.get("video-fullscreen").fire("click");
+  await f.elements.get("capture").fire("click");
   f.setVideoReady(false);
   await f.run("status()");
-  assert.equal(f.document.fullscreenElement, null);
-  assert.equal(f.elements.get("video-fullscreen").disabled, true);
+  await f.run("chain");
+  assert.equal(f.document.fullscreenElement, f.elements.get("viewer"));
+  assert.equal(f.elements.get("video-fullscreen").disabled, false);
+  assert.equal(f.run("capturing"), false);
+  assert.deepEqual(f.events.at(-1), {type: "release"});
+});
+
+// 2026-10-15 23:52 KST: CodexCode - sidebar access must never type into the USB target.
+test("settings can close, reopen and unpin inside fullscreen without stopping PC video", async () => {
+  const f = captureFixture();
+  await f.run("status()"); await f.run("findLocalDevices()"); await f.run("startLocalVideo()");
+  await f.elements.get("video-fullscreen").fire("click");
+  await f.elements.get("capture").fire("click");
+  await f.elements.get("settings-close").fire("click");
+  await f.run("chain");
+  assert.equal(f.elements.get("session-settings").hidden, true);
+  assert.equal(f.elements.get("settings-toggle")["aria-expanded"], "false");
+  assert.equal(f.run("capturing"), false);
+  assert.deepEqual(f.events.at(-1), {type: "release"});
+  await f.elements.get("settings-toggle").fire("click");
+  await f.elements.get("settings-pin").fire("click");
+  assert.equal(f.elements.get("session-settings").hidden, false);
+  assert.equal(f.elements.get("settings-pin")["aria-pressed"], "false");
+  assert.equal(f.document.fullscreenElement, f.elements.get("viewer"));
+  assert.equal(f.elements.get("local-video").srcObject, f.stream);
+  assert.equal(f.track.stopped, 0);
+});
+
+test("display settings change fit and smoothing without sending keyboard input", async () => {
+  const f = fixture();
+  await f.run("status()");
+  f.elements.get("display-fit").checked = false;
+  await f.elements.get("display-fit").fire("change");
+  f.elements.get("display-smooth").checked = false;
+  await f.elements.get("display-smooth").fire("change");
+  assert.equal(f.elements.get("viewer").classList.contains("native-size"), true);
+  assert.equal(f.elements.get("viewer").classList.contains("sharp-video"), true);
+  f.elements.get("display-fit").checked = true;
+  await f.elements.get("display-fit").fire("change");
+  assert.equal(f.elements.get("viewer").classList.contains("native-size"), false);
+  assert.deepEqual(f.events, []);
+});
+
+test("PC capture uses chosen resolution/FPS and applies later changes to the existing track", async () => {
+  const f = captureFixture();
+  await f.run("status()"); await f.run("findLocalDevices()");
+  f.elements.get("local-video-size").value = "1280x720";
+  f.elements.get("local-video-fps").value = "15";
+  await f.run("startLocalVideo()");
+  assert.equal(f.requests[0].video.width.ideal, 1280);
+  assert.equal(f.requests[0].video.frameRate.max, 15);
+  f.elements.get("local-video-size").value = "3840x2160";
+  f.elements.get("local-video-fps").value = "60";
+  await f.elements.get("local-video-fps").fire("change");
+  assert.equal(f.track.applied[0].width.ideal, 3840);
+  assert.equal(f.track.applied[0].frameRate.max, 60);
+  assert.match(f.elements.get("video-status").textContent, /3840×2160 · 60 fps/);
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.track.stopped, 0);
+});
+
+test("rejected capture settings keep the working preview and re-enable settings", async () => {
+  const f = captureFixture();
+  await f.run("status()"); await f.run("findLocalDevices()"); await f.run("startLocalVideo()");
+  f.track.applyConstraints = async () => { throw new Error("unsupported"); };
+  await f.run("applyLocalVideoSettings()");
+  assert.match(f.elements.get("local-video-notice").textContent, /적용하지 못했습니다/);
+  assert.equal(f.elements.get("local-video").srcObject, f.stream);
+  assert.equal(f.elements.get("local-video-fps").disabled, false);
+  assert.equal(f.track.stopped, 0);
 });
 
 test("browser rejection and unsupported fullscreen leave the video inline", async () => {

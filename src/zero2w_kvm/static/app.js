@@ -27,7 +27,69 @@ const known = new Set([
   "NumLock", "NumpadDivide", "NumpadMultiply", "NumpadSubtract", "NumpadAdd", "NumpadEnter", "NumpadDecimal", "IntlBackslash", "ContextMenu"
 ]);
 
-function notice(message) { $("notice").textContent = message; }
+function notice(message) {
+  $("notice").textContent = $("login-notice").textContent = message;
+  if (message && authenticated && $("session-settings").hidden) setSettingsOpen(true);
+}
+// 2026-10-15 23:52 KST: CodexCode - settings stay inside the fullscreen element and release target input.
+let settingsOpen = true, settingsPinned = true;
+function setSettingsOpen(open) {
+  stopCapture();
+  settingsOpen = Boolean(open);
+  $("session-settings").hidden = !settingsOpen;
+  $("viewer").classList.toggle("settings-open", settingsOpen);
+  $("settings-toggle").setAttribute("aria-expanded", String(settingsOpen));
+  const label = settingsOpen ? "설정 패널 접기" : "설정 패널 열기";
+  $("settings-toggle").setAttribute("aria-label", label);
+  $("settings-toggle").title = label;
+  $("settings-toggle").textContent = settingsOpen ? "›" : "‹";
+  if (!settingsOpen) $("settings-toggle").focus();
+}
+$("settings-toggle").addEventListener("click", () => setSettingsOpen(!settingsOpen));
+$("settings-close").addEventListener("click", () => setSettingsOpen(false));
+$("settings-pin").addEventListener("click", () => {
+  stopCapture();
+  settingsPinned = !settingsPinned;
+  $("viewer").classList.toggle("settings-pinned", settingsPinned);
+  $("settings-pin").setAttribute("aria-pressed", String(settingsPinned));
+  $("settings-pin").setAttribute("aria-label", settingsPinned ? "설정 패널 고정 해제" : "설정 패널 고정");
+  $("settings-pin").title = settingsPinned ? "설정 패널 고정 해제" : "설정 패널 고정";
+});
+$("session-settings").addEventListener("pointerdown", stopCapture);
+$("display-fit").addEventListener("change", () => {
+  stopCapture(); $("viewer").classList.toggle("native-size", !$("display-fit").checked);
+});
+$("display-smooth").addEventListener("change", () => {
+  stopCapture(); $("viewer").classList.toggle("sharp-video", !$("display-smooth").checked);
+});
+function localVideoConstraints() {
+  const size = ["1280x720", "1920x1080", "3840x2160"].includes($("local-video-size").value) ? $("local-video-size").value : "1920x1080";
+  const fps = [15, 30, 60].includes(Number($("local-video-fps").value)) ? Number($("local-video-fps").value) : 30;
+  const [width, height] = size.split("x").map(Number);
+  return {width: {ideal: width}, height: {ideal: height}, frameRate: {ideal: fps, max: fps}};
+}
+function localVideoStatus() {
+  if (!localStream) return;
+  const settings = localStream.getVideoTracks()[0].getSettings();
+  $("video-status").textContent = `이 PC · ${settings.width || "?"}×${settings.height || "?"} · ${Math.round(settings.frameRate || 0)} fps`;
+}
+async function applyLocalVideoSettings() {
+  if (!authenticated || videoSource !== "local" || !localStream || localBusy) return;
+  stopCapture();
+  const stream = localStream, generation = localGeneration;
+  localBusy = true; localVideoControls();
+  try {
+    await stream.getVideoTracks()[0].applyConstraints(localVideoConstraints());
+    if (generation !== localGeneration) return;
+    localVideoStatus();
+    $("local-video-notice").textContent = "영상 설정을 적용했습니다. 연결 상태에서 실제 해상도와 프레임 속도를 확인하세요.";
+  } catch (error) {
+    if (generation === localGeneration) $("local-video-notice").textContent = `영상 설정을 적용하지 못했습니다. ${localVideoError(error)}`;
+  } finally {
+    if (generation === localGeneration) { localBusy = false; localVideoControls(); }
+  }
+}
+for (const id of ["local-video-size", "local-video-fps"]) $(id).addEventListener("change", applyLocalVideoSettings);
 function localVideoSupported() {
   return window.isSecureContext && typeof navigator.mediaDevices?.getUserMedia === "function";
 }
@@ -38,6 +100,7 @@ function localVideoControls() {
   $("local-video-device").disabled = !available || localBusy || !localDevices.length;
   $("local-video-start").disabled = !available || localBusy || !$("local-video-device").value;
   $("local-video-stop").disabled = !localStream && !localBusy;
+  for (const id of ["local-video-size", "local-video-fps"]) $(id).disabled = !available || localBusy;
   if (videoSource === "local" && !localVideoSupported()) {
     $("local-video-notice").textContent = "PC 캡처는 이 PC의 Open-KVM-PC.cmd로 콘솔을 열어 사용하세요. 일반 HTTP Pi 주소에서는 브라우저가 장치 접근을 차단합니다. HTTPS 콘솔에서도 사용할 수 있습니다.";
   }
@@ -54,13 +117,13 @@ function stopLocalVideo(message = "PC 캡처 영상 연결 대기") {
     $("video-placeholder").hidden = false;
     $("video-status").textContent = $("video-message").textContent = message;
     $("local-video-notice").textContent = message;
-    stopCapture(); exitVideoFullscreen(); fullscreenUI();
+    stopCapture(); fullscreenUI();
   }
   localVideoControls();
 }
 function changeVideoSource(value) {
   stopLocalVideo();
-  stopCapture(); exitVideoFullscreen();
+  stopCapture();
   videoSource = value === "pi" ? "pi" : "local";
   $("video-source").value = videoSource;
   $("video").removeAttribute("src"); $("video").hidden = true;
@@ -117,7 +180,7 @@ async function startLocalVideo() {
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {
-      deviceId: {exact: $("local-video-device").value}, width: {ideal: 1920}, height: {ideal: 1080}, frameRate: {ideal: 30}
+      deviceId: {exact: $("local-video-device").value}, ...localVideoConstraints()
     }});
     if (generation !== localGeneration) { stream.getTracks().forEach(track => track.stop()); return; }
     localStream = stream;
@@ -131,8 +194,7 @@ async function startLocalVideo() {
     videoReady = true;
     videoLoaded = $("local-video").readyState >= 2 && $("local-video").videoWidth > 0;
     $("video-placeholder").hidden = true;
-    const settings = stream.getVideoTracks()[0].getSettings();
-    $("video-status").textContent = `이 PC · ${settings.width || "?"}×${settings.height || "?"} · ${Math.round(settings.frameRate || 0)} fps`;
+    localVideoStatus();
     $("local-video-notice").textContent = `연결됨 · ${stream.getVideoTracks()[0].label || "선택한 캡처보드"}`;
     fullscreenUI();
   } catch (error) {
@@ -152,14 +214,14 @@ $("local-video-device").addEventListener("change", () => { stopLocalVideo(); loc
 $("local-video").addEventListener("loadeddata", () => {
   if (localStream && videoSource === "local") { videoLoaded = $("local-video").videoWidth > 0; fullscreenUI(); }
 });
-function isVideoFullscreen() { return document.fullscreenElement === $("screen"); }
+function isVideoFullscreen() { return document.fullscreenElement === $("viewer"); }
 function fullscreenUI() {
   const active = isVideoFullscreen();
-  const supported = typeof $("screen").requestFullscreen === "function" && document.fullscreenEnabled !== false;
-  $("video-fullscreen").disabled = fullscreenChanging || (!active && (!videoReady || !videoLoaded || !supported));
+  const supported = typeof $("viewer").requestFullscreen === "function" && document.fullscreenEnabled !== false;
+  $("video-fullscreen").disabled = fullscreenChanging || (!active && (!authenticated || !supported));
   $("video-fullscreen").textContent = active ? "전체 화면 종료" : "전체 화면";
   $("video-fullscreen").setAttribute("aria-pressed", String(active));
-  $("video-fullscreen").title = !supported ? "이 브라우저는 전체 화면을 지원하지 않습니다." : !videoReady || !videoLoaded ? "캡처 영상이 표시되면 사용할 수 있습니다." : "영상 전체 화면 전환";
+  $("video-fullscreen").title = !supported ? "이 브라우저는 전체 화면을 지원하지 않습니다." : !authenticated ? "콘솔 로그인 후 사용할 수 있습니다." : "영상 및 설정 전체 화면 전환";
   $("fullscreen-exit").disabled = fullscreenChanging;
 }
 async function exitVideoFullscreen() {
@@ -172,12 +234,13 @@ async function exitVideoFullscreen() {
 $("video-fullscreen").addEventListener("click", async () => {
   if (fullscreenChanging) return;
   if (isVideoFullscreen()) { await exitVideoFullscreen(); return; }
-  if (!videoReady || !videoLoaded) { notice("캡처 영상이 표시된 뒤 전체 화면을 사용할 수 있습니다."); return; }
-  if (typeof $("screen").requestFullscreen !== "function" || document.fullscreenEnabled === false) {
+  if (!authenticated) return;
+  stopCapture();
+  if (typeof $("viewer").requestFullscreen !== "function" || document.fullscreenEnabled === false) {
     notice("이 브라우저에서는 영상 전체 화면을 사용할 수 없습니다."); return;
   }
   fullscreenChanging = true; fullscreenUI();
-  try { await $("screen").requestFullscreen(); }
+  try { await $("viewer").requestFullscreen(); }
   catch { notice("전체 화면 전환에 실패했습니다. 브라우저의 전체 화면 허용 여부를 확인하세요."); }
   finally { fullscreenChanging = false; fullscreenUI(); }
 });
@@ -185,7 +248,7 @@ $("fullscreen-exit").addEventListener("click", event => { event.stopPropagation(
 document.addEventListener("fullscreenchange", () => {
   fullscreenUI();
   if (isVideoFullscreen()) {
-    if (!authenticated || !videoReady || !videoLoaded) { exitVideoFullscreen(); return; }
+    if (!authenticated) { exitVideoFullscreen(); return; }
     $("screen").focus();
   } else stopCapture();
 });
@@ -445,7 +508,7 @@ async function status() {
       videoLoaded = false;
       $("video").hidden = true; $("video-placeholder").hidden = false;
       $("video").removeAttribute("src"); videoStarted = false;
-      exitVideoFullscreen();
+      stopCapture();
     }
     // Some MJPEG browsers delay load while the stream remains open; decoded dimensions prove a frame exists.
     if (videoReady && videoStarted && !$("video").hidden && $("video").naturalWidth > 0 && $("video").naturalHeight > 0) videoLoaded = true;
@@ -457,7 +520,7 @@ async function status() {
 $("video").addEventListener("load", () => { videoLoaded = videoStarted && videoReady; fullscreenUI(); });
 $("video").addEventListener("error", () => {
   videoStarted = videoLoaded = false;
-  fullscreenUI(); exitVideoFullscreen();
+  stopCapture(); fullscreenUI();
 });
 status();
 setInterval(status, 3000);

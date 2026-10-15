@@ -8,4 +8,5 @@
 # 2026-10-11 15:27 KST: CodexCode - type textbox content on the USB-connected target.
 # 2026-10-11 17:02 KST: CodexCode - UK keyboard symbols for USB text input.
 # 2026-10-15 23:10 KST: CodexCode - capture devices attached to the browser PC.
-__version__ = "0.4.0"
+# 2026-10-15 23:52 KST: CodexCode - fullscreen viewer and right-hand session settings.
+__version__ = "0.5.0"

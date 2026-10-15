@@ -79,3 +79,69 @@ footer { padding-top: 0; color: #7d90aa; font-size: 12px; }
 .video-input label:first-of-type { margin-top: 0; }
 .video-input .toolbar { margin-top: 14px; margin-bottom: 0; }
 #local-video-notice { margin-bottom: 0; font-size: 13px; }
+/* 2026-10-15 23:52 KST: CodexCode - remote desktop style sidebar inside the fullscreen viewer. */
+.kvm-page { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+.kvm-page > header { max-width: none; width: 100%; padding: 12px 22px; flex: 0 0 auto; }
+.kvm-page h1 { font-size: 18px; margin: 3px 0 0; letter-spacing: -.3px; }
+.kvm-page .eyebrow { font-size: 9px; }
+.kvm-page .login { margin: 35px auto; width: calc(100% - 40px); }
+#login-notice { color: #ffc88c; font-size: 13px; }
+.kvm-page > main { width: 100%; max-width: none; padding: 0; flex: 1; min-height: 0; overflow: auto; }
+.kvm-page > footer { width: 100%; max-width: none; padding: 7px 20px; font-size: 11px; flex: 0 0 auto; }
+#console-panel { height: 100%; }
+.viewer { --panel-width: 360px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); width: 100%; height: 100%; overflow: hidden; background: #050a12; }
+.viewer.settings-open.settings-pinned { grid-template-columns: minmax(0, 1fr) var(--panel-width); }
+.display-area { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); min-width: 0; min-height: 0; overflow: auto; grid-column: 1; }
+.viewer #screen { width: 100%; height: 100%; min-height: 0; aspect-ratio: auto; border: 0; border-radius: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; }
+.viewer #video, .viewer #local-video { grid-area: 1 / 1; min-width: 0; min-height: 0; width: 100%; height: 100%; object-fit: contain; }
+.viewer.native-size #screen { width: max-content; height: max-content; min-width: 100%; min-height: 100%; }
+.viewer.native-size .display-area { display: block; }
+.viewer.native-size #screen { grid-template: auto / auto; }
+.viewer.native-size #video, .viewer.native-size #local-video { width: auto; height: auto; max-width: none; max-height: none; }
+.viewer.sharp-video #video, .viewer.sharp-video #local-video { image-rendering: pixelated; }
+.session-settings { position: absolute; inset: 0 0 0 auto; width: var(--panel-width); display: flex; flex-direction: column; z-index: 4; background: #181e28; border-left: 1px solid #354050; box-shadow: -8px 0 30px #0003; }
+.settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; }
+.settings-heading h2 { margin: 0; font-size: 14px; }
+.settings-heading > div { display: flex; gap: 6px; }
+.icon-button { background: transparent; color: #dce6f2; border-radius: 5px; padding: 6px 9px; font-size: 12px; }
+#settings-close { font-size: 25px; line-height: 1; padding: 2px 8px; }
+#settings-pin[aria-pressed="true"] { color: #75dfbb; background: #263d38; }
+.settings-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 18px 18px; border-bottom: 1px solid #343e4d; }
+.settings-actions button { min-height: 48px; }
+.settings-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.settings-section { padding: 18px; border-bottom: 1px solid #343e4d; }
+.settings-section summary { cursor: pointer; font-size: 13px; font-weight: 650; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.settings-section summary::-webkit-details-marker { display: none; }
+.settings-section summary::after { content: '⌄'; font-size: 17px; color: #91a4bc; }
+.settings-section[open] summary::after { content: '⌃'; }
+.settings-section[open] summary { margin-bottom: 17px; }
+.session-settings label { font-size: 13px; margin-top: 16px; }
+.setting-check { display: flex; align-items: flex-start; gap: 11px; font-weight: 600; cursor: pointer; }
+.setting-check input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: #75dfbb; flex: 0 0 auto; }
+.setting-check small { display: block; font-size: 11px; line-height: 1.6; color: #9aacbf; margin-top: 4px; font-weight: 400; }
+.session-settings select, .session-settings textarea { width: 100%; padding: 10px; background: #0f1722; color: #e6edf5; border: 1px solid #3c4b60; border-radius: 6px; font: inherit; font-size: 12px; }
+.session-settings .toolbar { margin-top: 13px; margin-bottom: 0; gap: 8px; }
+.session-settings button, .session-settings .button { font-size: 12px; padding: 9px 11px; }
+.session-settings .shortcut-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.session-settings .hint { font-size: 11px; line-height: 1.65; margin-bottom: 0; }
+.session-settings .text-entry { margin-top: 0; }
+.session-settings .pi-link { margin-top: 13px; }
+.status-line { display: flex; align-items: baseline; gap: 12px; font-size: 12px; }
+.status-line > span { flex: 0 0 30px; color: #7f96b0; }
+.status-line p { margin: 5px 0; overflow-wrap: anywhere; }
+.session-settings #notice { margin: 0; padding: 0 18px; min-height: 0; max-height: 100px; overflow: auto; flex: 0 0 auto; font-size: 12px; }
+.session-settings #notice:not(:empty) { padding-top: 12px; padding-bottom: 12px; border-top: 1px solid #343e4d; }
+.settings-toggle { position: absolute; z-index: 5; top: 50%; right: 0; width: 28px; height: 64px; padding: 0; transform: translateY(-50%); border-radius: 10px 0 0 10px; background: #263344; color: #edf5ff; box-shadow: -3px 0 12px #0004; font-size: 28px; }
+.settings-open .settings-toggle { right: var(--panel-width); }
+.viewer:fullscreen { width: 100vw; height: 100dvh; }
+.viewer::backdrop { background: #000; }
+.viewer #fullscreen-controls { top: 12px; left: 12px; right: auto; padding: 0; z-index: 3; }
+.viewer:fullscreen #fullscreen-controls { display: flex; }
+.viewer button:focus-visible, .viewer select:focus-visible, .viewer summary:focus-visible { outline: 2px solid #75dfbb; outline-offset: 3px; }
+@media (max-width: 800px) {
+  .viewer { --panel-width: min(360px, calc(100% - 40px)); }
+  .viewer.settings-open.settings-pinned { grid-template-columns: minmax(0, 1fr); }
+  .kvm-page > header { padding: 10px 14px; }
+  .kvm-page > footer { padding: 5px 14px; font-size: 10px; }
+  .settings-section { padding: 16px; }
+}
