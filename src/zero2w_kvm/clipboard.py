@@ -10,7 +10,8 @@ class ClipboardBridge:
     limit = 65536
 
     def __init__(self, console_token, clock=time.monotonic):
-        self.agent_token = hmac.new(console_token.encode(), b"zero2w-kvm/clipboard-agent/v1", hashlib.sha256).hexdigest()
+        # 2026-10-16 02:03 KST: retire old paired helpers that could run on the controller PC.
+        self.agent_token = hmac.new(console_token.encode(), b"zero2w-kvm/clipboard-agent/v2", hashlib.sha256).hexdigest()
         self.clock = clock
         self.lock = threading.Lock()
         self.last_seen = None
@@ -28,7 +29,7 @@ class ClipboardBridge:
         with self.lock:
             now = self.clock()
             if self.last_seen is None or now - self.last_seen >= 5:
-                raise ConnectionError("대상 Windows의 클립보드 도우미를 먼저 실행하세요.")
+                raise ConnectionError("대상 Windows 도우미가 연결되지 않았습니다. 클립보드 설정의 실행 묶음을 조종당하는 Windows로 옮겨 실행하세요. 현재 조종하는 PC에서 실행하면 안 됩니다.")
             identity = secrets.token_urlsafe(18)
             self.job = {"id": identity, "owner": owner, "expires": now + 10, "dispatched": False, "ready": False}
             return identity

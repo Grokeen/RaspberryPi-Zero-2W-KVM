@@ -2,6 +2,8 @@
 import http.client
 import json
 import re
+import io
+import zipfile
 from pathlib import Path
 import threading
 import unittest
@@ -118,6 +120,24 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn(TOKEN.encode(), body)
         self.assertNotIn(b"__KVM_AGENT_TOKEN__", body)
         self.assertEqual(headers["Cache-Control"], "no-store")
+
+    # 2026-10-16 01:55 KST: the double-click bundle must preserve pairing and refuse the controller.
+    def test_windows_helper_bundle_is_authenticated_paired_and_has_an_sta_launcher(self):
+        self.assertEqual(self.request("/api/clipboard/windows-helper.zip")[0], 401)
+        code, headers, body = self.request("/api/clipboard/windows-helper.zip", headers=self.auth())
+        self.assertEqual(code, 200)
+        self.assertEqual(headers["Content-Type"], "application/zip")
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            self.assertEqual(set(archive.namelist()), {"KVM-Windows-Clipboard.ps1", "Start-KVM-Clipboard.cmd", "README.txt"})
+            helper = archive.read("KVM-Windows-Clipboard.ps1")
+            self.assertTrue(helper.startswith(b'\xef\xbb\xbf'))
+            self.assertIn(self.app.clipboard.agent_token.encode(), helper)
+            self.assertNotIn(TOKEN.encode(), helper)
+            self.assertNotIn(b"__KVM_AGENT_TOKEN__", helper)
+            self.assertLess(helper.index(b"Pi USB keyboard not found"), helper.index(b"System.Windows.Forms"))
+            launcher = archive.read("Start-KVM-Clipboard.cmd")
+            self.assertIn(b'-NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0KVM-Windows-Clipboard.ps1"', launcher)
 
     # 2026-10-11 15:27 KST: the key planner is available with the normal console assets.
     def test_text_planner_asset_is_served_as_javascript(self):

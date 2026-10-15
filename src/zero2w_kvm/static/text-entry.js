@@ -66,5 +66,6 @@
     switchMode(false);
     return {steps, total: letters.length};
   }
-  globalThis.KVMText = Object.freeze({plan});
+  // 2026-10-16 01:55 KST: share approved IME chords with physical Hangul-key forwarding.
+  globalThis.KVMText = Object.freeze({plan, imeKeys: Object.freeze([...imeKeys])});
 })();

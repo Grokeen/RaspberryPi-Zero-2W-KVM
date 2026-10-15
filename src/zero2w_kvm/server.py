@@ -3,6 +3,7 @@ import argparse
 import errno
 from collections import defaultdict
 import hmac
+import io
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -14,6 +15,7 @@ import secrets
 import signal
 import threading
 import time
+import zipfile
 from urllib.parse import parse_qs, unquote, urlsplit
 from . import __version__
 from .hid import Controller, ControlBusyError, USBDisconnectedError, KEY_CODES
@@ -210,7 +212,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._headers(200, mime, len(body))
                 self.wfile.write(body)
                 return
-            if path not in ("/api/status", "/api/video", "/api/pi/status", "/api/pi/vnc", "/api/clipboard/result", "/api/clipboard/windows-helper.ps1") and not path.startswith("/novnc/"):
+            if path not in ("/api/status", "/api/video", "/api/pi/status", "/api/pi/vnc", "/api/clipboard/result", "/api/clipboard/windows-helper.ps1", "/api/clipboard/windows-helper.zip") and not path.startswith("/novnc/"):
                 self._json(404, {"error": "Not found"})
                 return
             identity = self.server.app.identity(self.headers)
@@ -220,14 +222,24 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/status":
                 self._json(200, {"version": __version__, "hid": self.server.app.controller.status(),
                                  "video": self.server.app.video.status(), "clipboard": self.server.app.clipboard.status()})
-            elif path == "/api/clipboard/windows-helper.ps1":
+            elif path in ("/api/clipboard/windows-helper.ps1", "/api/clipboard/windows-helper.zip"):
                 host = self.connection.getsockname()[0]
                 if ":" in host:
                     host = f"[{host}]"
                 address = f"http://{host}:{self.server.server_port}"
                 body = (STATIC / "windows-clipboard-helper.ps1").read_text(encoding="utf-8")
                 body = body.replace("__KVM_SERVER__", address).replace("__KVM_AGENT_TOKEN__", self.server.app.clipboard.agent_token).encode("utf-8-sig")
-                self._headers(200, "application/octet-stream", len(body))
+                mime = "application/octet-stream"
+                # 2026-10-16 01:55 KST: pair an interactive STA launcher with the helper for the USB target.
+                if path.endswith(".zip"):
+                    bundle = io.BytesIO()
+                    launcher = '@echo off\r\npowershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0KVM-Windows-Clipboard.ps1"\r\nif errorlevel 1 pause\r\n'
+                    with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                        archive.writestr("KVM-Windows-Clipboard.ps1", body)
+                        archive.writestr("Start-KVM-Clipboard.cmd", launcher.encode("ascii"))
+                        archive.writestr("README.txt", "조종당하는 Windows에서 압축을 풀고 Start-KVM-Clipboard.cmd를 실행하세요.\r\nPi USB 키보드가 연결된 PC에서만 실행됩니다. Connected to KVM 안내 후 창을 최소화하세요.\r\n창을 닫으면 종료됩니다. 이 파일에는 도우미 전용 인증 정보가 포함되어 있습니다.\r\n".encode("utf-8-sig"))
+                    body, mime = bundle.getvalue(), "application/zip"
+                self._headers(200, mime, len(body))
                 self.wfile.write(body)
             elif path == "/api/clipboard/result":
                 job = parse_qs(urlsplit(self.path).query).get("job", [""])[0]

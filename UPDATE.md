@@ -298,3 +298,16 @@
 - 구현 커밋 `8c7f0f72d2b193811f40b642eac1d1708423fcb5`을 PR #2로 게시하고 main에 병합했습니다. 병합 커밋은 `8fcab08035cc584e34f3841e9aafc220506b05f4`입니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/pull/2
 - 브랜치 CI `38766458668`와 PR CI `38766464576`에서 Python 3.10/3.11/3.13의 자동 검사와 Node 테스트/빌드가 모두 성공했습니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38766464576
 - v0.6.1 wheel/source archive 빌드와 런타임 파일 일치, 공개 Git/패키지의 비공개 접속 정보 제외를 확인했습니다. 사용자 로컬 README와 별도 사용자 파일은 보존했습니다. 실제 대상의 Alt+Tab 결과와 브라우저 키보드 잠금 상태는 사용자 확인을 요청했으며, 확인 전에는 실제 기능 검증 완료로 간주하지 않습니다.
+
+## 2026-10-16 02:00 KST — CodexCode — Alt+Tab 실사용 확인, 한/영 전환과 클립보드 설정 보완
+
+- 사용자가 v0.6.1의 전체 화면/키보드 잠금 허용 후 Alt+Tab이 조종당하는 Windows에서 창을 전환한다고 확인했습니다. 이는 해당 환경의 Alt+Tab 실사용 확인이며 다른 모든 Windows 단축키 확인을 뜻하지 않습니다.
+- Ctrl+C 실패는 실제 서버 상태에서 도우미 미연결(agent_ready=false), 최근 도우미 poll 0회, 복사 요청 503 응답으로 확인했습니다. 사용자는 도우미를 현재 조종하는 PC에서 실행했다고 답했습니다. 진단 중 클립보드 내용이나 인증 정보를 출력하지 않았습니다.
+- v0.6.2: 대상 Windows 실행 ZIP에 paired PowerShell/STA CMD 실행기/설명을 넣었습니다. 도우미는 Pi 기본 USB VID/PID 장치를 먼저 확인해 잘못된 PC의 클립보드를 읽지 않게 했습니다. CheckOnly 모드로 현재 조종하는 PC에서 거부되는 것을 확인했고, 네트워크/인증/업데이트 오류를 구분해 표시합니다. 실제 대상 Windows에서 새 도우미를 실행하는 단계가 필요합니다.
+- 잘못된 PC 실행을 막는 검사 없이 배포된 이전 도우미는 인증 범위를 v2로 갱신해 무효화했습니다. 콘솔 접속 토큰은 유지하며 새 실행 묶음을 받아야 합니다. 이전 도우미의 scoped token 거부를 회귀 검증했습니다.
+- Ctrl+C 처리 상태와 오류는 설정이 접혀 있거나 전체 화면이어도 영상 위에 표시합니다. 오류로 대상 USB 제어를 중단하거나 기존 PC 클립보드를 덮어쓰지 않습니다.
+- 한/영키를 전용 Lang1로만 보내던 방식을 대상 IME 설정에 연결했습니다. 기본은 Windows용 오른쪽 Alt이며, 물리 키와 한글 텍스트 입력, 전환 시험 버튼이 같은 설정을 사용합니다. AltRight 위치의 HangulMode/legacy 키도 언어 키로 식별하고 synthetic Alt/Ctrl 중복을 방지합니다. 일반 AltGraph와 일본어 Kana의 의미는 유지하고, 선택값을 브라우저에 저장합니다.
+- 로컬 Python 59개 + Node 67개, 총 126개 통과. IME 기본/선택 조합·누락 키 이벤트·held key 복구·저장소 오류, 접힌 패널의 클립보드 안내와 인증된 ZIP/STA 실행기/주 토큰 미포함을 검증했습니다. Windows PowerShell AST 및 잘못된 PC에서의 CheckOnly 거부도 통과했습니다.
+- 사용자 요청으로 실제 README.md를 프로젝트 설명·연결 구성도·설치·영상·Windows 단축키·한/영 설정·대상 PC 도우미 실행·텍스트 입력·Pi 원격 화면·문제 해결 문서로 작성했습니다. 기존 로컬 README는 비공개 작업 폴더에 보관했고 개인 화면 이미지 파일은 변경하거나 공개 Git에 추가하지 않았습니다.
+- 기준: https://learn.microsoft.com/en-us/globalization/input/korean-ime (오른쪽 Alt 한/영 전환). 실제 대상의 한/영 동작과 대상 → 현재 PC 클립보드 왕복은 새 설정/도우미 실행 후 확인해야 합니다. Pi 배포/GitHub 결과는 후속 기록에 추가합니다.
+- Pi v0.6.2 설치 후 Python 59개/Node 67개가 모두 통과했고 web/gadget active, USB configured 및 로컬·Pi 소스·설치본 18개 파일 일치를 확인했습니다. 실제 localhost 자산/인증/도우미 ZIP의 paired 정보·STA 실행기/주 토큰 미포함과 기존 Host·Origin 차단도 통과했습니다. USB 장치를 재연결하지 않았습니다.
