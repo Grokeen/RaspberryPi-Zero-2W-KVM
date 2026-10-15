@@ -235,3 +235,16 @@
 - 실제 HTTP에서 콘솔 HTML, UK 키 계획 스크립트, Pi HTML, app.js와 로컬 파일의 SHA256 일치를 확인했습니다. 인증된 상태 API가 버전 0.3.3을 보고합니다. 기존 자동 검사 76개와 CI 성공으로 검증된 동일 소스를 배포했습니다.
 - `~/zero2w-kvm-source`에도 소스/테스트/설치 스크립트/문서를 반영하고 모든 런타임 파일의 설치본 일치를 확인했습니다. 기존 편집용 소스는 `~/zero2w-kvm-source-backup-uk-layout-icf7tq5i`에 보존했습니다.
 - 이전의 Pi 설치 대기 상태를 해소했습니다. 사용자는 USB KVM 콘솔을 Ctrl+F5로 새로고침하고, 대상이 표준 UK 배열인 경우 ‘UK/영국 배열’을 선택해 재입력할 수 있습니다. 대상 Linux 자체의 키보드/SSH 설정은 변경하지 않았습니다.
+
+## 2026-10-15 23:10 KST — CodexCode — KVM 콘솔 PC의 캡처보드 지원
+
+- Windows PnP에서 AVerMedia Live Gamer ULTRA S GC553Pro의 Camera/Media/USB 장치가 모두 정상 상태임을 확인했습니다. Pi에는 외부 캡처 장치가 없고 실제 USB 모드는 peripheral이므로, 사용자가 설명한 콘솔 PC 연결에 맞춰 구현했습니다.
+- `static/index.html`, `app.js`, `style.css`: PC/Pi 영상 입력 선택, 카메라 권한을 통한 PC 영상 장치 검색, AVerMedia 장치 우선 선택, 지정 deviceId의 getUserMedia 연결, 로컬 video 미리보기 및 전체 화면을 추가했습니다. Pi 상태 폴링과 PC 영상 상태를 분리했습니다. 오디오 권한은 요청하지 않습니다.
+- 로그아웃/페이지 종료/입력원 변경/연결 취소 때 트랙을 해제하고, 늦게 완료된 권한 요청이나 장치 연결이 영상을 되살리지 않도록 처리했습니다. 권한 거부, 장치 사용 중, 장치 분리에 대한 안내를 추가했습니다.
+- `local_console.py`, `Open-KvmConsole.ps1`, `Open-KVM-PC.cmd`: 브라우저 장치 접근이 허용되는 localhost 실행기를 추가했습니다. 127.0.0.1에만 바인딩하고 대상 Pi를 고정하며 Host/Origin 검사, 기존 인증 쿠키와 WebSocket/MJPEG 전송을 유지합니다. 접속 토큰은 저장하지 않습니다.
+- `server.py`: 로컬 비디오용 CSP media-src 및 camera=(self), microphone=() 정책을 추가했습니다. 패키지/화면 버전을 0.4.0으로 변경하고 CLI entry point 및 소스 패키지 실행기를 추가했습니다.
+- 검증: Python 47개와 Node 39개, 합계 86개 통과. localhost 인증/로그아웃, 외부 Origin·Host 차단, Pi 오프라인 처리, 양방향 WebSocket 및 PC 캡처 연결·권한 거부·비동기 취소를 확인했습니다. Python 컴파일 및 PowerShell 구문 검사, wheel/source archive 빌드도 통과했습니다.
+- 로컬 README의 사용자 편집을 보존하고 별도 공개 문서 사본으로 빌드했습니다. 실제 접속 정보가 공개 소스에 포함되지 않는지 검사했습니다.
+- 이 세션에는 연결된 브라우저가 없어 실제 GC553Pro 영상 프레임과 HDMI 입력 신호의 시각 검증은 아직 수행하지 않았습니다. 카메라 권한 승인과 영상 연결은 사용자 브라우저에서 진행합니다.
+- Pi에서도 Python 47개와 설치 셸 구문 검사를 통과했습니다. 기존 런타임 및 편집용 소스를 백업하고 웹 런타임만 반영했습니다. 편집용 소스 복사에서 기존 root 소유 캐시의 권한 문제를 확인해 웹 서비스를 시작하고 캐시를 제외하여 복사를 완료했습니다. 설치본·Pi 소스·로컬 런타임 15개 파일의 바이트 일치를 검증했습니다.
+- Windows localhost 실행기를 시작하고 실제 Pi의 HTML/JS/CSS와 카메라 정책, 토큰 로그인/상태/로그아웃, noVNC 자산 및 외부 Host/Origin 거절을 검증했습니다. API 버전 0.4.0, 웹/gadget 서비스 active와 USB configured 상태를 확인했습니다. 실행기를 다시 실행하면 기존 같은 Pi 연결을 재사용합니다.

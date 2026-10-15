@@ -2,6 +2,7 @@
 include UPDATE.md
 recursive-include scripts *.py *.sh *.ps1
 include OWERORDER.md
+include Open-KVM-PC.cmd
 recursive-include systemd *.service *.rules *.example
 recursive-include tests *.py *.js
 recursive-include src/zero2w_kvm/static *

@@ -135,7 +135,9 @@ class Handler(BaseHTTPRequestHandler):
         host = self.headers.get("Host", "")
         if urlsplit(self.path).path == "/pi" and re.fullmatch(r"[A-Za-z0-9.\-:\[\]]+", host):
             connections += f" ws://{host} wss://{host}"
-        self.send_header("Content-Security-Policy", f"default-src 'self'; script-src 'self'; style-src {styles}; img-src 'self' data:; connect-src {connections}; frame-ancestors 'none'")
+        # 2026-10-15 23:10 KST: CodexCode - local capture streams stay in the browser.
+        self.send_header("Content-Security-Policy", f"default-src 'self'; script-src 'self'; style-src {styles}; img-src 'self' data:; media-src 'self' blob:; connect-src {connections}; frame-ancestors 'none'")
+        self.send_header("Permissions-Policy", "camera=(self), microphone=()")
         if length is not None:
             self.send_header("Content-Length", str(length))
         if cookie:

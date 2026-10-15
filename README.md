@@ -1,6 +1,6 @@
 # RaspberryPi-Zero-2W-KVM
 
-Raspberry Pi Zero 2 W를 USB 키보드와 마우스로 연결하고, 같은 네트워크의 웹 브라우저에서 대상 컴퓨터를 제어합니다. CodexCode v0.3.3은 USB 입력 제어, 선택적 V4L2 영상, Pi 자체의 VNC 원격 데스크톱을 제공합니다.
+Raspberry Pi Zero 2 W를 USB 키보드와 마우스로 연결하고, 같은 네트워크의 웹 브라우저에서 대상 컴퓨터를 제어합니다. CodexCode v0.4.0은 USB 입력 제어, 선택적 V4L2 영상, Pi 자체의 VNC 원격 데스크톱을 제공합니다.
 
 ## 연결 구조
 
@@ -256,3 +256,35 @@ Windows Microsoft IME의 오른쪽 Alt, macOS의 Ctrl+Space, Linux 한글 입력
 Linux의 시스템 설정은 `localectl status`, X11 세션 설정은 `setxkbmap -query`로 확인할 수 있습니다.
 Wayland 및 앱별 입력 소스는 데스크톱 키보드 설정에서 확인하세요.
 표준 UK 배열을 지원하며 국제 배열의 dead key나 사용자 지정 키 재배치는 별도 설정이 필요할 수 있습니다.
+
+
+## KVM을 사용하는 PC의 캡처보드
+
+캡처보드를 **KVM 웹 콘솔을 여는 PC**에 연결할 수 있습니다. 예: 대상 컴퓨터 HDMI 출력 →
+AVerMedia 캡처보드 HDMI IN → 캡처보드 USB → 콘솔 PC. Pi의 USB 데이터 포트는 대상
+컴퓨터의 키보드·마우스 제어에 사용합니다.
+
+Windows에서는 저장소의 `Open-KVM-PC.cmd -PiHost <Pi-IP>`를 실행하세요. 로컬
+`codexCode.md`에 Pi IP가 있으면 더블 클릭만으로 실행할 수 있습니다. Python 3.10 이상이
+필요하며 저장소의 `.venv`가 있으면 우선 사용합니다. 콘솔은 `http://127.0.0.1:8081/`로
+열립니다. 이미 실행 중인 같은 Pi 콘솔은 재사용합니다. 포트 충돌 시
+`Open-KVM-PC.cmd -PiHost <Pi-IP> -LocalPort 8082`처럼 다른 포트를 지정하세요.
+
+1. 기존 Pi 접속 토큰으로 로그인합니다.
+2. **영상 입력 선택 → 이 PC**에서 **PC 장치 찾기**를 누르고 브라우저의 카메라 권한을 허용합니다.
+3. **Live Gamer ULTRA S GC553Pro** 등 실제 캡처보드를 선택하고 **영상 연결**을 누릅니다.
+4. 영상이 표시되면 전체 화면을 사용할 수 있습니다. 키보드·마우스 입력은 기존처럼 Pi로 전송됩니다.
+
+캡처보드는 브라우저에서 카메라 장치로 표시됩니다. 기본적으로 1920×1080, 30fps를
+요청하고 장치가 지원하는 형식으로 연결합니다. 오디오는 요청하지 않습니다. 장치 사용 중
+오류가 나오면 OBS/AVerMedia 등 같은 장치를 사용하는 앱을 종료하고 다시 연결하세요.
+로그아웃, 영상 끊기, 입력원 변경 또는 페이지 종료 시 캡처 스트림을 해제합니다.
+
+일반 `http://<Pi-IP>:8080`에서는 브라우저 보안 정책상 PC 장치를 열 수 없습니다.
+localhost 실행기 또는 HTTPS 콘솔을 사용하세요.
+[브라우저 장치 접근 조건](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
+
+localhost 실행기는 이 PC의 `127.0.0.1`에만 열리고 지정된 Pi 콘솔로 요청을 전달합니다.
+기존 토큰 인증과 동일 출처 검사를 유지하며, 캡처 영상은 이 PC 브라우저에서 직접 표시됩니다.
+Pi 영상 입력도 선택할 수 있습니다. Pi USB 포트의 HID 모드 설정은 변경할 필요가 없습니다.
+wheel 설치 후에는 `zero2w-kvm-local --pi-host <Pi-IP> --open-browser`로도 실행할 수 있습니다.

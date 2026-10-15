@@ -7,6 +7,9 @@ let dx = 0, dy = 0, wheel = 0, buttons = 0, mouseDirty = false;
 let videoStarted = false;
 // 2026-10-10 20:23 KST: CodexCode - enable fullscreen only after a capture frame is displayed.
 let videoReady = false, videoLoaded = false, fullscreenChanging = false;
+// 2026-10-15 23:10 KST: CodexCode - browser-local capture, separate from Pi MJPEG status.
+let videoSource = null, localStream = null, localGeneration = 0, localBusy = false;
+let localDevices = [];
 // 2026-10-10 00:24 KST: USB target control becomes available after host enumeration.
 let usbConnected = false;
 // 2026-10-11 15:27 KST: CodexCode - cancellable text typing through existing USB tap reports.
@@ -25,6 +28,130 @@ const known = new Set([
 ]);
 
 function notice(message) { $("notice").textContent = message; }
+function localVideoSupported() {
+  return window.isSecureContext && typeof navigator.mediaDevices?.getUserMedia === "function";
+}
+function localVideoControls() {
+  const available = authenticated && videoSource === "local" && localVideoSupported();
+  $("local-video-controls").hidden = videoSource !== "local";
+  $("local-video-find").disabled = !available || localBusy;
+  $("local-video-device").disabled = !available || localBusy || !localDevices.length;
+  $("local-video-start").disabled = !available || localBusy || !$("local-video-device").value;
+  $("local-video-stop").disabled = !localStream && !localBusy;
+  if (videoSource === "local" && !localVideoSupported()) {
+    $("local-video-notice").textContent = "PC 캡처는 이 PC의 Open-KVM-PC.cmd로 콘솔을 열어 사용하세요. 일반 HTTP Pi 주소에서는 브라우저가 장치 접근을 차단합니다. HTTPS 콘솔에서도 사용할 수 있습니다.";
+  }
+}
+function stopLocalVideo(message = "PC 캡처 영상 연결 대기") {
+  localGeneration++;
+  localBusy = false;
+  if (localStream) localStream.getTracks().forEach(track => track.stop());
+  localStream = null;
+  $("local-video").srcObject = null;
+  $("local-video").hidden = true;
+  if (videoSource === "local") {
+    videoReady = videoLoaded = false;
+    $("video-placeholder").hidden = false;
+    $("video-status").textContent = $("video-message").textContent = message;
+    $("local-video-notice").textContent = message;
+    stopCapture(); exitVideoFullscreen(); fullscreenUI();
+  }
+  localVideoControls();
+}
+function changeVideoSource(value) {
+  stopLocalVideo();
+  stopCapture(); exitVideoFullscreen();
+  videoSource = value === "pi" ? "pi" : "local";
+  $("video-source").value = videoSource;
+  $("video").removeAttribute("src"); $("video").hidden = true;
+  videoStarted = videoReady = videoLoaded = false;
+  $("video-placeholder").hidden = false;
+  $("video-status").textContent = $("video-message").textContent = videoSource === "local" ? "PC 장치를 찾아 캡처보드를 선택하세요." : "Pi 영상 신호 확인 중";
+  localVideoControls(); fullscreenUI();
+}
+function localVideoError(error) {
+  return ({NotAllowedError: "카메라 권한이 거부되었습니다. 주소창의 사이트 권한에서 카메라를 허용하세요.",
+    NotFoundError: "영상 장치를 찾지 못했습니다. 이 PC에 캡처보드 USB가 연결되어 있는지 확인하세요.",
+    NotReadableError: "영상 장치를 열지 못했습니다. OBS나 AVerMedia 프로그램 등 장치를 사용 중인 앱을 종료한 뒤 다시 연결하세요.",
+    OverconstrainedError: "선택한 장치를 사용할 수 없습니다. PC 장치 찾기로 목록을 갱신하세요."})[error.name] || `PC 영상 연결 실패: ${error.message}`;
+}
+async function findLocalDevices() {
+  if (!authenticated || videoSource !== "local" || !localVideoSupported() || localBusy) return;
+  stopLocalVideo();
+  const generation = localGeneration;
+  localBusy = true; localVideoControls();
+  $("local-video-notice").textContent = "카메라 권한을 허용하면 이 PC의 영상 장치를 찾습니다…";
+  let probe;
+  try {
+    let devices = await navigator.mediaDevices.enumerateDevices();
+    if (generation !== localGeneration) return;
+    if (!devices.some(device => device.kind === "videoinput" && device.label)) {
+      probe = await navigator.mediaDevices.getUserMedia({video: true, audio: false});
+      if (generation !== localGeneration) return;
+      devices = await navigator.mediaDevices.enumerateDevices();
+    }
+    if (generation !== localGeneration) return;
+    localDevices = devices.filter(device => device.kind === "videoinput" && device.deviceId);
+    const previous = $("local-video-device").value;
+    $("local-video-device").replaceChildren(...localDevices.map((device, index) => {
+      const option = document.createElement("option");
+      option.value = device.deviceId; option.textContent = device.label || `영상 장치 ${index + 1}`;
+      return option;
+    }));
+    $("local-video-device").value = (localDevices.find(device => device.deviceId === previous)
+      || localDevices.find(device => /avermedia|live gamer|capture|캡처|캡쳐/i.test(device.label)) || localDevices[0])?.deviceId || "";
+    $("local-video-notice").textContent = localDevices.length ? `영상 장치 ${localDevices.length}개를 찾았습니다. 캡처보드를 선택하고 ‘영상 연결’을 누르세요.` : "영상 장치가 없습니다. 캡처보드의 USB 연결과 Windows 카메라 권한을 확인하세요.";
+  } catch (error) {
+    if (generation === localGeneration) $("local-video-notice").textContent = localVideoError(error);
+  } finally {
+    if (probe) probe.getTracks().forEach(track => track.stop());
+    if (generation === localGeneration) { localBusy = false; localVideoControls(); }
+  }
+}
+async function startLocalVideo() {
+  if (!authenticated || videoSource !== "local" || !localVideoSupported() || localBusy || !$("local-video-device").value) return;
+  stopLocalVideo();
+  const generation = localGeneration;
+  localBusy = true; localVideoControls();
+  $("local-video-notice").textContent = "선택한 캡처보드에 연결 중…";
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {
+      deviceId: {exact: $("local-video-device").value}, width: {ideal: 1920}, height: {ideal: 1080}, frameRate: {ideal: 30}
+    }});
+    if (generation !== localGeneration) { stream.getTracks().forEach(track => track.stop()); return; }
+    localStream = stream;
+    for (const track of stream.getVideoTracks()) track.addEventListener("ended", () => {
+      if (localStream === stream) stopLocalVideo("PC 캡처 장치 연결이 끊겼습니다. 장치를 다시 찾아 연결하세요.");
+    });
+    $("local-video").srcObject = stream;
+    $("local-video").hidden = false;
+    await $("local-video").play();
+    if (generation !== localGeneration) return;
+    videoReady = true;
+    videoLoaded = $("local-video").readyState >= 2 && $("local-video").videoWidth > 0;
+    $("video-placeholder").hidden = true;
+    const settings = stream.getVideoTracks()[0].getSettings();
+    $("video-status").textContent = `이 PC · ${settings.width || "?"}×${settings.height || "?"} · ${Math.round(settings.frameRate || 0)} fps`;
+    $("local-video-notice").textContent = `연결됨 · ${stream.getVideoTracks()[0].label || "선택한 캡처보드"}`;
+    fullscreenUI();
+  } catch (error) {
+    if (generation === localGeneration) {
+      stopLocalVideo();
+      $("local-video-notice").textContent = localVideoError(error);
+    }
+  } finally {
+    if (generation === localGeneration) { localBusy = false; localVideoControls(); }
+  }
+}
+$("video-source").addEventListener("change", () => { changeVideoSource($("video-source").value); status(); });
+$("local-video-find").addEventListener("click", findLocalDevices);
+$("local-video-start").addEventListener("click", startLocalVideo);
+$("local-video-stop").addEventListener("click", () => stopLocalVideo());
+$("local-video-device").addEventListener("change", () => { stopLocalVideo(); localVideoControls(); });
+$("local-video").addEventListener("loadeddata", () => {
+  if (localStream && videoSource === "local") { videoLoaded = $("local-video").videoWidth > 0; fullscreenUI(); }
+});
 function isVideoFullscreen() { return document.fullscreenElement === $("screen"); }
 function fullscreenUI() {
   const active = isVideoFullscreen();
@@ -78,6 +205,7 @@ function usbControls() {
 }
 function showLogin() {
   authenticated = false;
+  stopLocalVideo();
   cancelTextEntry();
   $("type-text").value = "";
   stopCapture();
@@ -283,6 +411,7 @@ window.addEventListener("blur", () => { cancelTextEntry(); stopCapture(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) { cancelTextEntry(); stopCapture(); } });
 window.addEventListener("pagehide", () => {
   cancelTextEntry();
+  stopLocalVideo();
   if (authenticated) fetch("/api/input", {method: "POST", credentials: "same-origin", keepalive: true,
     headers: {"Content-Type": "application/json"}, body: JSON.stringify({type: "release"})}).catch(() => {});
 });
@@ -301,6 +430,9 @@ async function status() {
     $("connection").classList.add("ok");
     $("usb-status").textContent = !ready ? "USB gadget 설정 필요" : connected ? "키보드 · 마우스 연결됨" : `장치 준비됨 · 대상 USB 연결 대기 (${result.hid.usb_state || "unknown"})`;
     $("usb-guide").hidden = usbConnected;
+    if (videoSource === null) changeVideoSource(result.video.enabled ? "pi" : "local");
+    localVideoControls();
+    if (videoSource === "local") { fullscreenUI(); return; }
     $("video-status").textContent = result.video.error || (result.video.ready ? `${result.video.size} · ${result.video.fps} fps` : result.video.enabled ? "영상 신호 대기" : "캡처 장치 미설정");
     $("video-message").textContent = result.video.error || "화면 영상은 HDMI 캡처 장치를 설정한 뒤 표시됩니다.";
     videoReady = Boolean(result.video.ready);

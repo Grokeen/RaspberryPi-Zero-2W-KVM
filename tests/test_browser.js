@@ -9,15 +9,107 @@ const source = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/ap
 // 2026-10-11 15:27 KST: CodexCode - exercise textbox typing with the real text planner.
 const textSource = fs.readFileSync(path.join(__dirname, "../src/zero2w_kvm/static/text-entry.js"), "utf8");
 
+// 2026-10-15 23:10 KST: CodexCode - exercise device selection and capture cleanup races.
+function captureFixture(getUserMedia) {
+  const track = {label: "Live Gamer ULTRA S GC553Pro", stopped: 0, listeners: {},
+    stop() { this.stopped++; }, addEventListener(type, callback) { this.listeners[type] = callback; },
+    getSettings: () => ({width: 1920, height: 1080, frameRate: 30})};
+  const stream = {getTracks: () => [track], getVideoTracks: () => [track]};
+  const requests = [];
+  const mediaDevices = {
+    enumerateDevices: async () => [
+      {kind: "audioinput", deviceId: "microphone", label: "Microphone"},
+      {kind: "videoinput", deviceId: "webcam", label: "Webcam"},
+      {kind: "videoinput", deviceId: "avermedia", label: track.label}],
+    getUserMedia: async constraints => { requests.push(constraints); return getUserMedia ? getUserMedia(constraints) : stream; }
+  };
+  return {...fixture("configured", {secureContext: true, mediaDevices}), track, stream, requests, mediaDevices};
+}
+
+test("PC capture selects AVerMedia and Pi polling preserves the local preview", async () => {
+  const f = captureFixture();
+  await f.run("status()");
+  await f.run("findLocalDevices()");
+  assert.equal(f.elements.get("local-video-device").value, "avermedia");
+  assert.equal(f.elements.get("local-video-device").children.length, 2);
+  assert.equal(f.requests.length, 0);
+  await f.run("startLocalVideo()");
+  assert.equal(f.requests[0].audio, false);
+  assert.equal(f.requests[0].video.deviceId.exact, "avermedia");
+  assert.equal(f.elements.get("local-video").srcObject, f.stream);
+  assert.equal(f.elements.get("video-fullscreen").disabled, false);
+  await f.run("status()");
+  assert.equal(f.run("videoReady && videoLoaded"), true);
+  assert.equal(f.elements.get("local-video").hidden, false);
+  assert.match(f.elements.get("video-status").textContent, /1920×1080/);
+  await f.run("showLogin()");
+  assert.equal(f.track.stopped, 1);
+  assert.equal(f.elements.get("local-video").srcObject, null);
+});
+
+test("PC capture stops a stream that arrives after switching sources", async () => {
+  let resolve;
+  const f = captureFixture(() => new Promise(done => { resolve = done; }));
+  await f.run("status()");
+  await f.run("findLocalDevices()");
+  const connecting = f.run("startLocalVideo()");
+  f.run("changeVideoSource('pi')");
+  resolve(f.stream);
+  await connecting;
+  assert.equal(f.track.stopped, 1);
+  assert.equal(f.elements.get("local-video").srcObject, null);
+  assert.equal(f.run("videoSource"), "pi");
+});
+
+test("PC capture reports permission denial and an unplugged device ends fullscreen", async () => {
+  const denied = captureFixture(async () => { throw Object.assign(new Error("denied"), {name: "NotAllowedError"}); });
+  await denied.run("status()"); await denied.run("findLocalDevices()"); await denied.run("startLocalVideo()");
+  assert.match(denied.elements.get("local-video-notice").textContent, /권한이 거부/);
+  assert.equal(denied.elements.get("local-video-start").disabled, false);
+  const f = captureFixture();
+  await f.run("status()"); await f.run("findLocalDevices()"); await f.run("startLocalVideo()");
+  await f.elements.get("video-fullscreen").fire("click");
+  f.track.listeners.ended();
+  await Promise.resolve();
+  assert.equal(f.document.fullscreenElement, null);
+  assert.equal(f.run("videoReady"), false);
+  assert.match(f.elements.get("video-status").textContent, /끊겼/);
+});
+
+test("PC discovery releases its permission probe even when logout wins the race", async () => {
+  let resolve, entered;
+  const requested = new Promise(done => { entered = done; });
+  const f = captureFixture(() => new Promise(done => { resolve = done; entered(); }));
+  f.mediaDevices.enumerateDevices = async () => [{kind: "videoinput", deviceId: "default", label: ""}];
+  await f.run("status()");
+  const discovery = f.run("findLocalDevices()");
+  await requested;
+  f.run("showLogin()");
+  resolve(f.stream);
+  await discovery;
+  assert.equal(f.track.stopped, 1);
+  assert.equal(f.elements.get("local-video").srcObject, null);
+  assert.equal(f.run("authenticated"), false);
+});
+
+test("an HTTP Pi page gives localhost instructions without requesting a device", async () => {
+  const f = fixture();
+  await f.run("status()"); await f.run("findLocalDevices()");
+  assert.equal(f.elements.get("local-video-find").disabled, true);
+  assert.match(f.elements.get("local-video-notice").textContent, /Open-KVM-PC.cmd/);
+});
+
 function fixture(usbState = "configured", options = {}) {
   let videoReady = Boolean(options.videoReady);
   class Element {
-    constructor() { this.listeners = {}; this.dataset = {}; this.classList = {add() {}, remove() {}}; }
+    constructor() { this.listeners = {}; this.dataset = {}; this.value = ""; this.classList = {add() {}, remove() {}}; }
     addEventListener(type, listener) { (this.listeners[type] ||= []).push(listener); }
     async fire(type, event = {}) { for (const listener of this.listeners[type] || []) await listener(event); }
     focus() {}
     removeAttribute() {}
     setAttribute(name, value) { this[name] = value; }
+    replaceChildren(...children) { this.children = children; this.value = children[0]?.value || ""; }
+    async play() { this.readyState = 2; this.videoWidth = 1920; this.videoHeight = 1080; }
     async requestPointerLock() { this.pointerLockRequested = true; }
     async requestFullscreen() {
       this.fullscreenRequests = (this.fullscreenRequests || 0) + 1;
@@ -28,6 +120,7 @@ function fixture(usbState = "configured", options = {}) {
   }
   const elements = new Map();
   const document = new Element();
+  document.createElement = () => new Element();
   document.getElementById = id => {
     if (!elements.has(id)) elements.set(id, new Element());
     return elements.get(id);
@@ -38,7 +131,9 @@ function fixture(usbState = "configured", options = {}) {
   document.fullscreenEnabled = options.fullscreenSupported !== false;
   document.exitFullscreen = async () => { document.fullscreenElement = null; await document.fire("fullscreenchange"); };
   const window = new Element(), events = [], intervals = [];
-  const context = vm.createContext({document, window, AbortSignal, Promise, Set, setTimeout,
+  window.isSecureContext = Boolean(options.secureContext);
+  const navigator = {mediaDevices: options.mediaDevices};
+  const context = vm.createContext({document, window, navigator, AbortSignal, Promise, Set, setTimeout,
     setInterval: callback => intervals.push(callback),
     fetch: async (url, options) => {
       if (url === "/api/input") {
