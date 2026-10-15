@@ -337,3 +337,11 @@
 - 새 Windows CI 작업을 추가하고 PowerShell 구문 검사 및 현재 조종하는 PC의 USB 검사 거부도 통과했습니다. 한/영키는 앞선 사용자 확인 결과를 유지합니다. 실제 대상 Windows에 자동 실행 설치와 클립보드 왕복 확인은 아직 필요하며, Pi 배포/패키지/GitHub 결과는 후속 기록에 추가합니다.
 - Pi v0.6.3 배포 후 Python 62개 중 Windows 전용 1개를 제외한 61개와 Node 67개가 통과했습니다. web/gadget active, USB configured 및 로컬·Pi 소스·설치본 19개 파일 일치, 실제 localhost 자산/인증/새 ZIP/별도 health 인증 범위 검사를 통과했습니다. USB 재연결은 수행하지 않았습니다.
 - 새 설치를 위한 별도 패키지 복사 경로에서도 실행 묶음 7개 파일과 설치기 사전 검사를 검증했고, 설치기 템플릿을 의도적으로 누락시킨 임시 복사본은 거부되는 것을 확인했습니다. 실제 Pi 초기화나 재부팅은 하지 않았습니다. 빌드한 wheel/source archive에도 새 템플릿과 Windows 검사를 포함합니다.
+
+## 2026-10-16 03:35 KST — CodexCode — v0.6.3 GitHub 및 동일 설치 소스 반영 결과
+
+- 구현 커밋 `fa40281`을 PR #4로 게시해 main에 병합했습니다. 병합 커밋은 `ba8f9519648fad013a0c244242dd4d37d59edd6e`입니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/pull/4
+- 브랜치 CI `38786673849`와 PR CI `38786681073`에서 Python 3.10/3.11/3.13 및 새 Windows 도우미 검사까지 모두 성공했습니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/actions/runs/38786681073
+- 최종 안내·상태 표시 수정까지 Pi에 반영한 후 런타임 19개 파일과 로컬 소스, 실제 HTTP 자산/실행 묶음 일치를 다시 확인했습니다. 패키지 빌드와 공개 대상 정보 제외 검사도 통과했습니다. 프로젝트의 Pi 신규 설치·갱신 경로에 같은 파일과 실행 묶음 사전 검사를 포함했습니다.
+- 사용자에게 새 ZIP의 대상 Windows 최초 설치를 요청했습니다. 이 시점 도우미는 미연결이며 실제 Ctrl+C 전달과 USB 재연결 자동 동작은 확인 전입니다. 배포·격리 검사 성공과 대상 실사용 확인을 구분합니다.
+- 프로필에는 기존 Pull Shark와 Quickdraw만 표시되며 새 업적 추가는 확인되지 않았습니다. 실제 기능 PR 외에 배지 목적의 추가 PR이나 허위 활동은 수행하지 않았습니다.

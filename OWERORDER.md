@@ -198,3 +198,9 @@
 - Pi 배포 코드와 프로젝트 설치 코드에 같은 도우미/설치기/실행 묶음 생성 기능을 반영했습니다. Pi 설치기는 먼저 묶음 생성을 검사하며, README에도 동일 소스 설치와 Windows 최초 설정을 안내합니다.
 - 로컬 Python 62개·Node 67개와 Windows 격리 검사 23개를 통과했습니다. 시간초과 보고 시 결과 전송 요청이 없었음을 확인했으나 원인은 확정 전입니다. 실제 대상 Windows에서 새 자동 실행 설치 후 Ctrl+C → Ctrl+Alt+Shift → 현재 PC Ctrl+V 확인이 필요합니다. 한/영키는 사용자 확인 완료 상태입니다.
 - Pi v0.6.3 설치 및 새 설치용 패키지 검증을 통과했습니다. Pi Python 61개(Windows 전용 1개 제외)·Node 67개, 런타임 19개 파일 일치, 실제 다운로드·인증 검사와 USB configured를 확인했습니다. 기존 수동 도우미 창을 닫은 뒤 새 ZIP으로 설치합니다. 배포 후 콘솔은 Ctrl+F5로 새로고침하고 다시 로그인하세요.
+
+## 2026-10-16 03:35 KST — v0.6.3 GitHub 반영 완료
+
+- PR #4를 main에 병합했습니다(`ba8f951`). Python 3개 버전과 Windows 도우미 CI가 모두 통과했습니다: https://github.com/Grokeen/RaspberryPi-Zero-2W-KVM/pull/4
+- Pi에 적용한 소스와 프로젝트의 설치 소스를 일치시켰습니다. 새로 설치한 Pi도 같은 자동 실행 묶음을 제공합니다. Windows 최초 설치는 대상 PC에서 새 ZIP의 **Install-KVM-Clipboard.cmd**를 실행해야 합니다.
+- 시간초과는 **Check-KVM-Clipboard.cmd**의 출력으로 추가 확인할 수 있습니다. 실제 클립보드 복사와 USB 재연결 확인은 대상 Windows 설치 후 필요합니다. 기존 한/영키 정상 작동 확인은 유지합니다.
