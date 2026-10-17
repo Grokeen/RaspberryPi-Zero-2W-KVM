@@ -84,6 +84,30 @@ sudo cat /etc/zero2w-kvm/access.token
 
 실제 토큰이나 비밀번호는 README, GitHub, 화면 캡처에 올리지 마세요. 이 콘솔은 신뢰할 수 있는 로컬 네트워크에서 사용하세요.
 
+### Wi-Fi 자동 연결 우선순위
+
+NetworkManager 환경에서는 저장된 Wi-Fi 프로필의 `connection.autoconnect-priority`를 설정할 수 있습니다. 값이 클수록 우선하며, 예를 들어 1순위는 `100`, 2순위는 `90`, 그 밖의 프로필은 `0`으로 둘 수 있습니다.
+
+먼저 저장된 프로필의 UUID를 확인합니다.
+
+```bash
+nmcli -f NAME,UUID,TYPE connection show
+```
+
+아래 UUID 자리에는 실제 저장된 Wi-Fi 프로필의 UUID를 넣습니다.
+
+```bash
+sudo nmcli connection modify uuid "PRIMARY_WIFI_UUID" connection.autoconnect yes connection.autoconnect-priority 100
+sudo nmcli connection modify uuid "BACKUP_WIFI_UUID" connection.autoconnect yes connection.autoconnect-priority 90
+nmcli -f NAME,AUTOCONNECT,AUTOCONNECT-PRIORITY connection show
+```
+
+이 명령은 저장된 프로필을 수정합니다. 현재 연결을 강제로 끊지 않으며, 부팅이나 연결 해제 후 자동 연결할 때 사용 가능한 프로필 중 우선순위가 높은 것을 선택합니다. 이미 연결 중인 Wi-Fi를 더 높은 순위의 Wi-Fi로 자동 교체하는 설정은 아닙니다.
+
+추가 네트워크는 먼저 해당 Pi의 NetworkManager에 인증 정보를 저장해야 합니다. 네트워크가 현재 검색되지 않아도 프로필을 미리 저장할 수 있으며, 실제 연결·인증 확인은 해당 네트워크가 사용 가능할 때 진행합니다. SSID와 비밀번호는 기기별 OS 설정으로 관리하고 공개 소스에 넣지 않습니다. KVM 설치·갱신은 기존 NetworkManager 프로필을 유지합니다.
+
+참고: [NetworkManager 자동 연결 우선순위](https://networkmanager.dev/docs/api/latest/settings-connection.html), [연결 프로필과 인증 정보 저장](https://networkmanager.dev/docs/api/latest/nm-settings-keyfile.html).
+
 ## 2. 조종하는 Windows PC에서 콘솔 열기
 
 이 저장소를 조종하는 PC에도 받은 뒤 다음 실행기를 사용합니다. Python 3.10 이상이 필요하며 런타임은 Python 표준 라이브러리로 동작합니다.
