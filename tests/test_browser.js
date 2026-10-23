@@ -106,6 +106,8 @@ test("an HTTP Pi page gives localhost instructions without requesting a device",
 
 function fixture(usbState = "configured", options = {}) {
   let videoReady = Boolean(options.videoReady);
+  let textState = {busy: false, job: null}, statusFailure = false;
+  const textRequests = [], onTextStart = options.onTextStart;
   class Element {
     constructor() {
       this.listeners = {}; this.dataset = {}; this.value = "";
@@ -156,6 +158,20 @@ function fixture(usbState = "configured", options = {}) {
   const context = vm.createContext({document, window, navigator, KVMKeyMap: keyMap, AbortSignal, Promise, Set, setTimeout,
     setInterval: callback => intervals.push(callback),
     fetch: async (url, options) => {
+      if (url === "/api/text/start") {
+        const data = JSON.parse(options.body);
+        textRequests.push({url, data});
+        textState = {busy: true, job: {id: "test-text-job", state: "running", progress: 0,
+          total: [...data.text.replace(/\r\n?/g, "\n")].length, error: null}};
+        if (onTextStart) await onTextStart(data);
+        return {ok: true, status: 202, json: async () => textState};
+      }
+      if (url === "/api/text/cancel") {
+        textRequests.push({url, data: JSON.parse(options.body)});
+        textState.job.state = "stopping";
+        return {ok: true, status: 200, json: async () => textState};
+      }
+      if (url === "/api/status" && statusFailure) throw new Error("offline");
       if (url === "/api/clipboard/copy") {
         if (optionsClipboardOffline) return {ok: false, status: 503, json: async () => ({error: "대상 Windows 도우미를 먼저 실행하세요."})};
         return {ok: true, status: 200, json: async () => ({job: "test-job"})};
@@ -171,7 +187,8 @@ function fixture(usbState = "configured", options = {}) {
         }
       }
       return {ok: true, status: 200, json: async () => url === "/api/status" ? {
-        hid: {keyboard: true, mouse: true, usb_state: usbState}, video: {ready: videoReady, enabled: videoReady}
+        hid: {keyboard: true, mouse: true, usb_state: usbState}, video: {ready: videoReady, enabled: videoReady},
+        text_entry: textState
       } : {ok: true}};
     }
   });
@@ -179,7 +196,8 @@ function fixture(usbState = "configured", options = {}) {
   const optionsClipboardText = options.clipboardText, optionsClipboardOffline = options.clipboardOffline;
   vm.runInContext(textSource, context);
   vm.runInContext(source, context);
-  return {context, document, window, elements, events, intervals, shortcutButtons,
+  return {context, document, window, elements, events, intervals, shortcutButtons, textRequests,
+    setTextState: value => { textState = value; }, setStatusFailure: value => { statusFailure = value; },
     setVideoReady: value => { videoReady = value; },
     run: code => vm.runInContext(code, context)};
 }
@@ -794,16 +812,14 @@ test("sshd connection-test command changes only its pipe key between US and UK l
   assert.deepEqual(gb.steps[command.indexOf("^")].codes, ["ShiftLeft", "Digit6"]);
 });
 
-test("USB textbox sends the UK pipe through the existing international-backslash key", async () => {
+test("USB textbox submits UK pipe text with the chosen target layout", async () => {
   const f = fixture();
   await f.run("status()");
   f.elements.get("text-layout").value = "gb";
   f.elements.get("type-text").value = "a|b";
   await f.elements.get("text-send").fire("click");
-  assert.deepEqual(f.events, [
-    {type: "tap", codes: ["KeyA"]}, {type: "tap", codes: ["ShiftLeft", "IntlBackslash"]},
-    {type: "tap", codes: ["KeyB"]}, {type: "release"}
-  ]);
+  assert.deepEqual(f.events, []);
+  assert.deepEqual(f.textRequests[0].data, {text: "a|b", layout: "gb", ime: "AltRight"});
 });
 
 test("Hangul typing decomposes syllables and returns to English across mixed text", () => {
@@ -827,16 +843,26 @@ test("unsupported Unicode, control characters and excessive text are rejected be
   assert.equal(textPlan(" \n\t").total, 3);
 });
 
-test("USB textbox sends ordered key taps and a final release without keyboard capture", async () => {
+test("USB textbox submits one background job without browser key taps", async () => {
   const f = fixture();
   await f.run("status()");
   f.elements.get("type-text").value = "Ab\n";
   await f.elements.get("text-send").fire("click");
-  assert.deepEqual(f.events, [
-    {type: "tap", codes: ["ShiftLeft", "KeyA"]}, {type: "tap", codes: ["KeyB"]},
-    {type: "tap", codes: ["Enter"]}, {type: "release"}
-  ]);
+  assert.deepEqual(f.events, []);
+  assert.deepEqual(f.textRequests, [{url: "/api/text/start", data: {text: "Ab\n", layout: "us", ime: "AltRight"}}]);
   assert.equal(f.run("capturing"), false);
+  assert.equal(f.run("typing"), true);
+  assert.match(f.elements.get("text-status").textContent, /백그라운드 입력 중/);
+  await f.window.fire("blur");
+  f.document.hidden = true;
+  await f.document.fire("visibilitychange");
+  await f.window.fire("pagehide");
+  assert.equal(f.textRequests.length, 1);
+  assert.equal(f.run("typing"), true);
+  assert.equal(f.elements.get("text-stop").disabled, false);
+  f.setTextState({busy: false, job: {id: "test-text-job", state: "completed", progress: 3, total: 3}});
+  f.document.hidden = false;
+  await f.run("status()");
   assert.equal(f.run("typing"), false);
   assert.match(f.elements.get("text-status").textContent, /입력 완료 · 3자/);
 });
@@ -847,46 +873,108 @@ test("invalid text and detached USB never start a partial typing job", async () 
   f.elements.get("type-text").value = "abc😀";
   await f.elements.get("text-send").fire("click");
   assert.deepEqual(f.events, []);
+  assert.deepEqual(f.textRequests, []);
   const detached = fixture("not attached");
   await detached.run("status()");
   detached.elements.get("type-text").value = "abc";
   await detached.elements.get("text-send").fire("click");
   assert.deepEqual(detached.events, []);
+  assert.deepEqual(detached.textRequests, []);
   assert.equal(detached.elements.get("text-send").disabled, true);
 });
 
-test("cancel stops further text taps and releases input", async () => {
-  let f;
-  f = fixture("configured", {onInput: data => { if (data.type === "tap") f.run("cancelTextEntry()"); }});
+test("explicit cancel identifies the accepted Pi job and refresh recovers progress", async () => {
+  const f = fixture();
   await f.run("status()");
   f.elements.get("type-text").value = "abc";
   await f.elements.get("text-send").fire("click");
-  assert.deepEqual(f.events, [{type: "tap", codes: ["KeyA"]}, {type: "release"}]);
+  await f.elements.get("text-stop").fire("click");
+  assert.deepEqual(f.textRequests.at(-1), {url: "/api/text/cancel", data: {job: "test-text-job"}});
+  assert.match(f.elements.get("text-status").textContent, /중지 중/);
+  f.setTextState({busy: false, job: {id: "test-text-job", state: "cancelled", progress: 1, total: 3}});
+  await f.run("status()");
   assert.match(f.elements.get("text-status").textContent, /입력 중지 · 1 \/ 3자/);
+  const reopened = fixture();
+  reopened.setTextState({busy: true, job: {id: "existing-job", state: "running", progress: 20, total: 100}});
+  await reopened.run("status()");
+  assert.equal(reopened.run("typing"), true);
+  assert.equal(reopened.elements.get("text-send").disabled, true);
+  await reopened.elements.get("text-stop").fire("click");
+  assert.equal(reopened.textRequests[0].data.job, "existing-job");
 });
 
-test("a target error ends text typing without retries or subsequent characters", async () => {
-  const f = fixture("configured", {failInputAt: 2});
+test("transient status loss leaves the accepted Pi job running and failures never retry", async () => {
+  const f = fixture();
   await f.run("status()");
   f.elements.get("type-text").value = "abcd";
   await f.elements.get("text-send").fire("click");
-  assert.deepEqual(f.events.map(event => event.codes), [["KeyA"], ["KeyB"]]);
+  f.setStatusFailure(true);
+  await f.run("status()");
+  assert.equal(f.run("typing"), true);
+  assert.equal(f.textRequests.length, 1);
+  f.setStatusFailure(false);
+  f.setTextState({busy: false, job: {id: "test-text-job", state: "failed", progress: 1, total: 4, error: "USB disconnected"}});
+  await f.run("status()");
   assert.match(f.elements.get("text-status").textContent, /입력 실패/);
   assert.equal(f.run("typing"), false);
+  assert.equal(f.textRequests.length, 1);
 });
 
-test("cancelling Korean input returns the IME to English and leaves no held keys", async () => {
-  let f;
-  f = fixture("configured", {onInput: data => { if (data.type === "tap") f.run("cancelTextEntry()"); }});
+test("cancel while submission is pending sends the accepted job ID once available", async () => {
+  let accept;
+  const f = fixture("configured", {onTextStart: () => new Promise(resolve => { accept = resolve; })});
   await f.run("status()");
   f.elements.get("type-text").value = "한글";
   f.elements.get("text-layout").value = "ko";
   f.elements.get("text-ime").value = "AltRight";
+  const sending = f.elements.get("text-send").fire("click");
+  await new Promise(resolve => setImmediate(resolve));
+  await f.elements.get("text-stop").fire("click");
+  accept();
+  await sending;
+  assert.equal(f.textRequests.length, 2);
+  assert.equal(f.textRequests[0].data.layout, "ko");
+  assert.equal(f.textRequests[1].data.job, "test-text-job");
+  assert.equal(f.run("typingCancelled"), true);
+  assert.deepEqual(f.events, []);
+});
+
+test("a lost start response recovers status without resubmitting or cancelling", async () => {
+  const f = fixture("configured", {onTextStart: async () => { throw new Error("response lost"); }});
+  await f.run("status()");
+  f.elements.get("type-text").value = "private text";
   await f.elements.get("text-send").fire("click");
-  assert.deepEqual(f.events, [
-    {type: "tap", codes: ["AltRight"]}, {type: "tap", codes: ["AltRight"]}, {type: "release"}
-  ]);
-  assert.equal(f.run("typing"), false);
+  assert.equal(f.run("typing"), true);
+  assert.equal(f.textRequests.length, 1);
+  assert.doesNotMatch(f.elements.get("text-status").textContent, /private text/);
+});
+
+test("an unknown start outcome blocks duplicate submissions until Pi status recovers", async () => {
+  const f = fixture("configured", {onTextStart: async () => { throw new Error("response lost"); }});
+  await f.run("status()");
+  f.setStatusFailure(true);
+  f.elements.get("type-text").value = "abc";
+  await f.elements.get("text-send").fire("click");
+  await f.run("typeText()");
+  assert.equal(f.textRequests.length, 1);
+  assert.equal(f.elements.get("text-send").disabled, true);
+  f.setStatusFailure(false);
+  await f.run("status()");
+  assert.equal(f.run("textJob"), "test-text-job");
+  assert.equal(f.elements.get("text-stop").disabled, false);
+});
+
+test("another console's background job blocks direct capture and duplicate text", async () => {
+  const f = fixture();
+  f.setTextState({busy: true, job: null});
+  await f.run("status()");
+  await f.run("beginKeyboardCapture()");
+  f.elements.get("type-text").value = "abc";
+  await f.run("typeText()");
+  assert.equal(f.run("capturing"), false);
+  assert.deepEqual(f.events, []);
+  assert.deepEqual(f.textRequests, []);
+  assert.equal(f.elements.get("text-stop").disabled, true);
 });
 
 test("focusing the USB textbox releases captured keys so local paste stays local", async () => {

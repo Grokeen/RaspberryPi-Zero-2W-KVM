@@ -20,6 +20,7 @@ from .hid import Controller, ControlBusyError, USBDisconnectedError, KEY_CODES
 from .video import Video
 from .desktop import PiDesktop, websocket_key
 from .clipboard import ClipboardBridge, windows_helper
+from .text_entry import TextEntry
 
 LOG = logging.getLogger("zero2w-kvm")
 STATIC = Path(__file__).with_name("static")
@@ -34,10 +35,16 @@ class Application:
         self.video = video or Video()
         self.desktop = desktop or PiDesktop()
         self.clipboard = ClipboardBridge(token)
+        # 2026-10-23 22:24 KST: background typing survives browser focus and connection changes.
+        self.text_entry = TextEntry(self.controller, self.session_valid)
         self.sessions = {}
         self.attempts = defaultdict(list)
         self.lock = threading.Lock()
         self.closed = threading.Event()
+
+    def session_valid(self, identity):
+        with self.lock:
+            return identity == "bearer" or self.sessions.get(identity, 0) > time.monotonic()
 
     def login(self, token, address):
         now = time.monotonic()
@@ -74,6 +81,10 @@ class Application:
 
     def logout(self, identity):
         self.clipboard.cancel(identity)
+        try:
+            self.text_entry.cancel(identity)
+        except KeyError:
+            pass
         with self.lock:
             self.sessions.pop(identity, None)
         with self.controller.lock:
@@ -88,7 +99,7 @@ class Application:
         while not self.closed.wait(0.5):
             self.clipboard.expire()
             try:
-                self.controller.expire()
+                self.text_entry.expire()
             except OSError as error:
                 LOG.debug("Release will be retried: %s", error)
 
@@ -220,7 +231,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/status":
                 self._json(200, {"version": __version__, "hid": self.server.app.controller.status(),
-                                 "video": self.server.app.video.status(), "clipboard": self.server.app.clipboard.status()})
+                                 "video": self.server.app.video.status(), "clipboard": self.server.app.clipboard.status(),
+                                 "text_entry": self.server.app.text_entry.status(identity)})
             elif path in ("/api/clipboard/windows-helper.ps1", "/api/clipboard/windows-helper.zip"):
                 host = self.connection.getsockname()[0]
                 if ":" in host:
@@ -322,7 +334,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self._origin_ok():
                 self._json(403, {"error": "Cross-origin requests are forbidden"})
                 return
-            body = self._body()
+            body = self._body(32768 if path == "/api/text/start" else 8192)
             if path == "/api/login":
                 session, status = self.server.app.login(body.get("token"), self.client_address[0])
                 if session:
@@ -336,12 +348,23 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/input":
                 try:
-                    self.server.app.controller.update(body, identity)
+                    self.server.app.text_entry.input(body, identity)
                 except OSError as error:
                     # A HID EPIPE is a device failure, not a broken HTTP client socket.
                     self._input_failure(error)
                     return
                 self._json(200, {"ok": True})
+            elif path == "/api/text/start":
+                result = self.server.app.text_entry.start(identity, body.get("text"),
+                                                         body.get("layout", "us"), body.get("ime", "AltRight"))
+                self._json(202, result)
+            elif path == "/api/text/cancel":
+                if not isinstance(body.get("job"), str):
+                    raise ValueError("Text job ID is required")
+                try:
+                    self._json(200, self.server.app.text_entry.cancel(identity, body["job"]))
+                except KeyError:
+                    self._json(404, {"error": "Text job not found"})
             elif path == "/api/clipboard/copy":
                 with self.server.app.controller.lock:
                     if self.server.app.controller.owner != identity:
@@ -405,6 +428,7 @@ def main():
         pass
     finally:
         app.closed.set()
+        app.text_entry.close()
         server.server_close()
         app.video.close()
         try:

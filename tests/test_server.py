@@ -25,6 +25,7 @@ class ServerTests(unittest.TestCase):
 
     def tearDown(self):
         self.app.closed.set()
+        self.app.text_entry.close()
         self.server.shutdown()
         self.server.server_close()
         self.thread.join()
@@ -41,6 +42,48 @@ class ServerTests(unittest.TestCase):
 
     def auth(self):
         return {"Authorization": "Bearer " + TOKEN}
+
+    # 2026-10-23 22:24 KST: accepting a job must not wait for typing or need a live browser.
+    def test_async_text_api_auth_progress_isolation_cancel_and_logout(self):
+        self.assertEqual(self.request("/api/text/start", {"text": "abc"})[0], 401)
+        bad = self.request("/api/text/start", {"text": "abc😀"}, self.auth())
+        self.assertEqual(bad[0], 400)
+        self.assertEqual(self.reports, [])
+        code, _, body = self.request("/api/text/start", {"text": "a" * 100}, self.auth())
+        self.assertEqual(code, 202)
+        job = json.loads(body)["job"]
+        self.assertEqual(job["state"], "running")
+        self.assertTrue(self.app.text_entry.thread.is_alive())
+        self.assertEqual(self.request("/api/text/start", {"text": "b"}, self.auth())[0], 409)
+        self.assertEqual(self.request("/api/input", {"type": "tap", "codes": ["KeyX"]}, self.auth())[0], 409)
+        self.assertEqual(self.request("/api/input", {"type": "release"}, self.auth())[0], 200)
+        state = json.loads(self.request("/api/status", headers=self.auth())[2])["text_entry"]
+        self.assertEqual(state["job"]["id"], job["id"])
+        code, headers, _ = self.request("/api/login", {"token": TOKEN})
+        other = {"Cookie": headers["Set-Cookie"].split(";", 1)[0]}
+        state = json.loads(self.request("/api/status", headers=other)[2])["text_entry"]
+        self.assertTrue(state["busy"])
+        self.assertIsNone(state["job"])
+        self.assertEqual(self.request("/api/text/cancel", {"job": job["id"]}, other)[0], 404)
+        self.assertEqual(self.request("/api/text/cancel", {"job": job["id"]}, self.auth())[0], 200)
+        self.app.text_entry.thread.join(timeout=3)
+        self.assertEqual(self.app.text_entry.status("bearer")["job"]["state"], "cancelled")
+        self.assertEqual(self.request("/api/text/start", {"text": "한글" * 10, "layout": "ko"}, other)[0], 202)
+        self.assertEqual(self.request("/api/logout", {}, other)[0], 200)
+        self.app.text_entry.thread.join(timeout=3)
+        self.assertFalse(self.app.text_entry.status("bearer")["busy"])
+        self.assertIsNone(self.app.controller.owner)
+
+    def test_background_text_stops_when_its_cookie_session_expires(self):
+        _, headers, _ = self.request("/api/login", {"token": TOKEN})
+        cookie = headers["Set-Cookie"].split(";", 1)[0]
+        session = cookie.split("=", 1)[1]
+        self.assertEqual(self.request("/api/text/start", {"text": "a" * 100}, {"Cookie": cookie})[0], 202)
+        with self.app.lock:
+            self.app.sessions[session] = 0
+        self.app.text_entry.thread.join(timeout=3)
+        self.assertEqual(self.app.text_entry.status(session)["job"]["state"], "cancelled")
+        self.assertIsNone(self.app.controller.owner)
 
     def test_unauthenticated_input_and_status_are_rejected(self):
         self.assertEqual(self.request("/api/status")[0], 401)

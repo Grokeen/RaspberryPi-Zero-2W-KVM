@@ -10,4 +10,5 @@
 # 2026-10-15 23:10 KST: CodexCode - capture devices attached to the browser PC.
 # 2026-10-15 23:52 KST: CodexCode - fullscreen viewer and right-hand session settings.
 # 2026-10-16 00:25 KST: CodexCode - international keyboard, release chord and target clipboard bridge.
-__version__ = "0.6.3"
+# 2026-10-23 22:24 KST: CodexCode - Pi-owned background text entry.
+__version__ = "0.6.4"
